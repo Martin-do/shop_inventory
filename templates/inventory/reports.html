@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+<section class="heading">
+  <h1>Reports</h1>
+  <div class="actions">
+    <a class="button" href="{% url 'export_products_csv' %}">Products CSV</a>
+    <a class="button" href="{% url 'export_sales_csv' %}">Sales CSV</a>
+  </div>
+</section>
+
+<section class="stats">
+  <article><span>{{ sales_total }}</span><p>Total sales</p></article>
+  <article><span>{{ sales_count }}</span><p>Transactions</p></article>
+  <article><span>{{ items_sold }}</span><p>Items sold</p></article>
+</section>
+
+<section class="panel">
+  <h2>Top Products</h2>
+  <table>
+    <thead><tr><th>Product</th><th>Qty Sold</th><th>Sales</th></tr></thead>
+    <tbody>
+      {% for row in top_products %}
+        <tr><td>{{ row.product__name }}</td><td>{{ row.quantity }}</td><td>{{ row.sales }}</td></tr>
+      {% empty %}
+        <tr><td colspan="3">No sales yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

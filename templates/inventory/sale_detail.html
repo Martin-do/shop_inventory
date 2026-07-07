@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Sale #{{ sale.id }}{% endblock %}
+{% block content %}
+<section class="heading">
+  <h1>Sale #{{ sale.id }}</h1>
+  <a class="button primary" href="{% url 'pos' %}">New Sale</a>
+</section>
+
+<section class="panel receipt">
+  <dl class="summary-list">
+    <div><dt>Date</dt><dd>{{ sale.created_at|date:"M j, Y H:i" }}</dd></div>
+    <div><dt>Cashier</dt><dd>{{ sale.cashier_name|default:"-" }}</dd></div>
+    <div><dt>Total</dt><dd>{{ sale.total }}</dd></div>
+    <div><dt>Paid</dt><dd>{{ sale.amount_paid }}</dd></div>
+    <div><dt>Change</dt><dd>{{ sale.change_due }}</dd></div>
+  </dl>
+
+  <table>
+    <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
+    <tbody>
+      {% for item in sale.items.all %}
+        <tr>
+          <td>{{ item.product.name }}<small>{{ item.product.barcode }}</small></td>
+          <td>{{ item.quantity }}</td>
+          <td>{{ item.unit_price }}</td>
+          <td>{{ item.line_total }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

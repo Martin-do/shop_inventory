@@ -1,0 +1,32 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Shop Inventory{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'inventory/styles.css' %}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{% url 'dashboard' %}">Shop Inventory</a>
+    <nav>
+      <a href="{% url 'pos' %}">POS</a>
+      <a href="{% url 'receive_stock' %}">Receive</a>
+      <a href="{% url 'product_list' %}">Products</a>
+      <a href="{% url 'reports' %}">Reports</a>
+      <a href="/admin/">Admin</a>
+    </nav>
+  </header>
+  <main class="page">
+    {% if messages %}
+      <div class="messages">
+        {% for message in messages %}
+          <div class="message {{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

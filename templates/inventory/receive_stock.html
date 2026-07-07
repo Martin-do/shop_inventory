@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Receive Stock{% endblock %}
+{% block content %}
+<section class="heading">
+  <h1>Receive Stock</h1>
+</section>
+
+<form class="form panel compact" method="post">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  <label>Barcode {{ form.barcode }}</label>
+  {{ form.barcode.errors }}
+  {% if product %}
+    <p class="found">{{ product.name }} · Current stock: {{ product.stock_on_hand }}</p>
+  {% endif %}
+  <label>Quantity {{ form.quantity }}</label>
+  {{ form.quantity.errors }}
+  <label>Note {{ form.note }}</label>
+  {{ form.note.errors }}
+  <button class="button primary">Add Stock</button>
+</form>
+{% endblock %}

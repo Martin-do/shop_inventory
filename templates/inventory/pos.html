@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}POS{% endblock %}
+{% block content %}
+<section class="pos-layout">
+  <div>
+    <section class="heading">
+      <h1>Checkout</h1>
+      <form method="post" action="{% url 'pos_clear' %}">
+        {% csrf_token %}
+        <button class="button danger">Clear</button>
+      </form>
+    </section>
+
+    <form class="scan-box" method="post" action="{% url 'pos_add' %}">
+      {% csrf_token %}
+      <input id="barcode-input" name="barcode" placeholder="Scan barcode or type code" required autofocus autocomplete="off">
+      <input name="quantity" type="number" min="1" value="1" aria-label="Quantity">
+      <button class="button primary">Add</button>
+    </form>
+
+    <section class="panel">
+      <table class="cart">
+        <thead><tr><th>Item</th><th>Qty</th><th>Total</th><th></th></tr></thead>
+        <tbody>
+          {% for line in lines %}
+            <tr>
+              <td>{{ line.product.name }}<small>{{ line.product.barcode }}</small></td>
+              <td>{{ line.quantity }}</td>
+              <td>{{ line.line_total }}</td>
+              <td>
+                <form method="post" action="{% url 'pos_remove' line.product.barcode %}">
+                  {% csrf_token %}
+                  <button class="link-button">Remove</button>
+                </form>
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="4">Scan an item to begin.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <aside class="checkout panel">
+    <h2>Total</h2>
+    <strong>{{ total }}</strong>
+    <form method="post" action="{% url 'pos_checkout' %}">
+      {% csrf_token %}
+      <label>Cashier <input name="cashier_name" value="{{ checkout_form.cashier_name.value|default:'' }}"></label>
+      <label>Amount Paid <input name="amount_paid" type="number" step="0.01" min="0" value="{{ total }}"></label>
+      <button class="button primary wide">Complete Sale</button>
+    </form>
+  </aside>
+</section>
+
+<script>
+  const input = document.getElementById("barcode-input");
+  window.addEventListener("click", () => input.focus());
+  window.addEventListener("load", () => input.focus());
+</script>
+{% endblock %}

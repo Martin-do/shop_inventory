@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<section class="heading">
+  <h1>Dashboard</h1>
+  <a class="button primary" href="{% url 'pos' %}">Open POS</a>
+</section>
+
+<section class="stats">
+  <article><span>{{ product_count }}</span><p>Products</p></article>
+  <article><span>{{ low_stock_count }}</span><p>Low stock</p></article>
+  <article><span>{{ sale_count }}</span><p>Sales</p></article>
+  <article><span>{{ stock_value }}</span><p>Stock value</p></article>
+</section>
+
+<section class="panel">
+  <h2>Recent Stock Movements</h2>
+  <table>
+    <thead><tr><th>Time</th><th>Product</th><th>Type</th><th>Qty</th><th>Note</th></tr></thead>
+    <tbody>
+      {% for movement in recent_movements %}
+        <tr>
+          <td>{{ movement.created_at|date:"M j, H:i" }}</td>
+          <td>{{ movement.product.name }}</td>
+          <td>{{ movement.get_movement_type_display }}</td>
+          <td>{{ movement.quantity }}</td>
+          <td>{{ movement.note }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5">No stock movements yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

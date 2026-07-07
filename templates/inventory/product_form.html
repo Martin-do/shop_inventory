@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Add Product{% endblock %}
+{% block content %}
+<section class="heading">
+  <h1>Add Product</h1>
+</section>
+
+<form class="form panel" method="post">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  {% for field in form %}
+    <label>{{ field.label }} {{ field }}</label>
+    {{ field.errors }}
+  {% endfor %}
+  <button class="button primary">Save Product</button>
+</form>
+{% endblock %}

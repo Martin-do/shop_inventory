@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Products{% endblock %}
+{% block content %}
+<section class="heading">
+  <h1>Products</h1>
+  <a class="button primary" href="{% url 'product_create' %}">Add Product</a>
+</section>
+
+<form class="search" method="get">
+  <input name="q" value="{{ query }}" placeholder="Search name or barcode">
+  <button>Search</button>
+</form>
+
+<section class="panel">
+  <table>
+    <thead><tr><th>Name</th><th>Barcode</th><th>Price</th><th>Stock</th><th>Reorder</th></tr></thead>
+    <tbody>
+      {% for product in products %}
+        <tr class="{% if product.is_low_stock %}low{% endif %}">
+          <td>{{ product.name }}</td>
+          <td>{{ product.barcode }}</td>
+          <td>{{ product.selling_price }}</td>
+          <td>{{ product.stock_on_hand }}</td>
+          <td>{{ product.reorder_level }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5">No products yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
