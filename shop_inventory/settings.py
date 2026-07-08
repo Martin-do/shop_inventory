@@ -1,11 +1,24 @@
+import os
 from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = "dev-only-change-before-public-deployment"
-DEBUG = True
-ALLOWED_HOSTS = ["127.0.0.1", "localhost", "*"]
+
+def _env_bool(name, default):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-before-public-deployment")
+DEBUG = _env_bool("DEBUG", True)
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.environ.get("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+    if host.strip()
+]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -62,3 +75,7 @@ STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "dashboard"
+LOGOUT_REDIRECT_URL = "login"

@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Sum
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 
@@ -17,6 +18,12 @@ class Category(models.Model):
         return self.name
 
 
+class ProductQuerySet(models.QuerySet):
+    def with_stock(self):
+        """Annotate each product with ``stock`` to avoid per-row aggregate queries."""
+        return self.annotate(stock=Coalesce(Sum("movements__quantity"), 0))
+
+
 class Product(models.Model):
     name = models.CharField(max_length=180)
     barcode = models.CharField(max_length=80, unique=True, db_index=True)
@@ -28,6 +35,8 @@ class Product(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    objects = ProductQuerySet.as_manager()
+
     class Meta:
         ordering = ["name"]
 
@@ -36,6 +45,8 @@ class Product(models.Model):
 
     @property
     def stock_on_hand(self):
+        if "stock" in self.__dict__:
+            return self.__dict__["stock"]
         total = self.movements.aggregate(total=Sum("quantity"))["total"]
         return total or 0
 
