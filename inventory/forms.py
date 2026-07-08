@@ -2,26 +2,39 @@ from decimal import Decimal
 
 from django import forms
 
-from .models import Category, Product
+from .models import Product
 
 
-class ProductForm(forms.Form):
-    name = forms.CharField(max_length=180, widget=forms.TextInput(attrs={"autofocus": True}))
-    barcode = forms.CharField(max_length=80, widget=forms.TextInput(attrs={"autocomplete": "off"}))
-    category = forms.ModelChoiceField(queryset=Category.objects.all(), required=False)
-    cost_price = forms.DecimalField(min_value=Decimal("0.00"), decimal_places=2, max_digits=12, required=False)
-    selling_price = forms.DecimalField(min_value=Decimal("0.00"), decimal_places=2, max_digits=12)
+class ProductForm(forms.ModelForm):
     opening_stock = forms.IntegerField(min_value=0, initial=0, required=False)
-    reorder_level = forms.IntegerField(min_value=0, initial=5)
+
+    class Meta:
+        model = Product
+        fields = ["name", "barcode", "category", "cost_price", "selling_price", "reorder_level", "is_active"]
+        widgets = {
+            "name": forms.TextInput(attrs={"autofocus": True}),
+            "barcode": forms.TextInput(attrs={"autocomplete": "off"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["category"].required = False
+        self.fields["cost_price"].required = False
+        if self.instance.pk:
+            # Editing an existing product: opening stock only applies on create.
+            self.fields.pop("opening_stock")
+        else:
+            # Creating: new products are active by default; no toggle needed yet.
+            self.fields.pop("is_active")
 
     def clean_barcode(self):
-        barcode = self.cleaned_data["barcode"].strip()
-        if Product.objects.filter(barcode=barcode).exists():
-            raise forms.ValidationError("A product with this barcode already exists.")
-        return barcode
+        return self.cleaned_data["barcode"].strip()
 
     def clean_name(self):
         return self.cleaned_data["name"].strip()
+
+    def clean_cost_price(self):
+        return self.cleaned_data.get("cost_price") or Decimal("0.00")
 
 
 class ReceiveStockForm(forms.Form):

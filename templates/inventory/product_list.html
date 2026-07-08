@@ -13,18 +13,26 @@
 
 <section class="panel">
   <table>
-    <thead><tr><th>Name</th><th>Barcode</th><th>Price</th><th>Stock</th><th>Reorder</th></tr></thead>
+    <thead><tr><th>Name</th><th>Barcode</th><th>Price</th><th>Stock</th><th>Reorder</th><th>Status</th><th>Actions</th></tr></thead>
     <tbody>
       {% for product in products %}
-        <tr class="{% if product.is_low_stock %}low{% endif %}">
+        <tr class="{% if product.is_low_stock %}low{% endif %}{% if not product.is_active %} inactive{% endif %}">
           <td>{{ product.name }}</td>
           <td>{{ product.barcode }}</td>
           <td>{{ product.selling_price }}</td>
           <td>{{ product.stock_on_hand }}</td>
           <td>{{ product.reorder_level }}</td>
+          <td>{% if product.is_active %}Active{% else %}Inactive{% endif %}</td>
+          <td class="actions">
+            <a class="button" href="{% url 'product_update' product.pk %}">Edit</a>
+            <form method="post" action="{% url 'product_toggle_active' product.pk %}">
+              {% csrf_token %}
+              <button class="button">{% if product.is_active %}Deactivate{% else %}Activate{% endif %}</button>
+            </form>
+          </td>
         </tr>
       {% empty %}
-        <tr><td colspan="5">No products yet.</td></tr>
+        <tr><td colspan="7">No products yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>

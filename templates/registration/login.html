@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}{{ title }}{% endblock %}
+{% block title %}Log in{% endblock %}
 {% block content %}
 <section class="heading">
-  <h1>{{ title }}</h1>
+  <h1>Log in</h1>
 </section>
 
 <form class="form panel" method="post">
@@ -12,6 +12,7 @@
     <label>{{ field.label }} {{ field }}</label>
     {{ field.errors }}
   {% endfor %}
-  <button class="button primary">Save Product</button>
+  <input type="hidden" name="next" value="{{ next }}">
+  <button class="button primary">Log in</button>
 </form>
 {% endblock %}

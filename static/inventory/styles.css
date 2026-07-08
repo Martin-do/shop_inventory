@@ -122,6 +122,32 @@ tr.low td {
   background: #fff5ef;
 }
 
+tr.inactive td {
+  color: var(--muted);
+}
+
+td.actions {
+  display: flex;
+  gap: 8px;
+}
+
+td.actions form {
+  margin: 0;
+}
+
+.topbar nav {
+  align-items: center;
+}
+
+.topbar .user {
+  color: #cfe3dd;
+  font-weight: 700;
+}
+
+.topbar .logout {
+  margin: 0;
+}
+
 small {
   color: var(--muted);
   display: block;

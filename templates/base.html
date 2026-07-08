@@ -11,11 +11,20 @@
   <header class="topbar">
     <a class="brand" href="{% url 'dashboard' %}">Shop Inventory</a>
     <nav>
-      <a href="{% url 'pos' %}">POS</a>
-      <a href="{% url 'receive_stock' %}">Receive</a>
-      <a href="{% url 'product_list' %}">Products</a>
-      <a href="{% url 'reports' %}">Reports</a>
-      <a href="/admin/">Admin</a>
+      {% if user.is_authenticated %}
+        <a href="{% url 'pos' %}">POS</a>
+        <a href="{% url 'receive_stock' %}">Receive</a>
+        <a href="{% url 'product_list' %}">Products</a>
+        <a href="{% url 'reports' %}">Reports</a>
+        <a href="/admin/">Admin</a>
+        <span class="user">{{ user.get_username }}</span>
+        <form class="logout" method="post" action="{% url 'logout' %}">
+          {% csrf_token %}
+          <button class="button">Log out</button>
+        </form>
+      {% else %}
+        <a href="{% url 'login' %}">Log in</a>
+      {% endif %}
     </nav>
   </header>
   <main class="page">
