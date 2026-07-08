@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from .forms import ProductForm
-from .models import Product, Sale, SaleItem, StockMovement
+from .models import Category, Product, Sale, SaleItem, StockMovement
 
 
 def make_product(barcode="1001", selling_price="10.00", reorder_level=5, stock=0):
@@ -73,6 +73,48 @@ class ProductFormTests(TestCase):
         })
         self.assertFalse(form.is_valid())
         self.assertIn("barcode", form.errors)
+
+    def test_new_category_creates_and_assigns(self):
+        form = ProductForm(data={
+            "name": "Soda",
+            "barcode": "8001",
+            "selling_price": "3.00",
+            "reorder_level": 5,
+            "opening_stock": 0,
+            "new_category": "Drinks",
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+        product = form.save()
+        self.assertEqual(Category.objects.filter(name="Drinks").count(), 1)
+        self.assertEqual(product.category.name, "Drinks")
+
+    def test_new_category_reuses_existing_name(self):
+        existing = Category.objects.create(name="Snacks")
+        form = ProductForm(data={
+            "name": "Chips",
+            "barcode": "8002",
+            "selling_price": "2.00",
+            "reorder_level": 5,
+            "opening_stock": 0,
+            "new_category": "Snacks",
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+        product = form.save()
+        self.assertEqual(Category.objects.filter(name="Snacks").count(), 1)
+        self.assertEqual(product.category, existing)
+
+    def test_invalid_submit_does_not_create_category(self):
+        make_product(barcode="8003")
+        form = ProductForm(data={
+            "name": "Dup",
+            "barcode": "8003",
+            "selling_price": "2.00",
+            "reorder_level": 5,
+            "opening_stock": 0,
+            "new_category": "Ghost",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertFalse(Category.objects.filter(name="Ghost").exists())
 
     def test_edit_keeps_same_barcode(self):
         product = make_product(barcode="777")

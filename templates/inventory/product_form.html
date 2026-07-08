@@ -10,6 +10,7 @@
   {{ form.non_field_errors }}
   {% for field in form %}
     <label>{{ field.label }} {{ field }}</label>
+    {% if field.help_text %}<small class="field-help">{{ field.help_text }}</small>{% endif %}
     {{ field.errors }}
   {% endfor %}
   <button class="button primary">Save Product</button>
