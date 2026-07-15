@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Manage Categories{% endblock %}
+{% block content %}
+<section class="heading">
+  <h1>Product Categories</h1>
+  <a class="button" href="{% url 'settings_dashboard' %}">Back to Settings</a>
+</section>
+
+<div class="pos-layout">
+  <div>
+    <section class="panel" style="margin-bottom: 20px;">
+      <h2>Add New Category</h2>
+      <form class="search" method="post" style="margin-top: 10px;">
+        {% csrf_token %}
+        {{ form.name }}
+        <button class="button primary">Create</button>
+      </form>
+      {{ form.name.errors }}
+    </section>
+
+    <section class="panel">
+      <h2>Existing Categories</h2>
+      <table style="margin-top: 10px;">
+        <thead>
+          <tr>
+            <th>Category Name</th>
+            <th>Number of Products</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for category in categories %}
+            <tr>
+              <td>{{ category.name }}</td>
+              <td>{{ category.product_count }}</td>
+              <td class="actions">
+                <a class="button" href="{% url 'settings_category_update' category.pk %}">Rename</a>
+                {% if category.product_count == 0 %}
+                  <form method="post" action="{% url 'settings_category_delete' category.pk %}" onsubmit="return confirm('Are you sure you want to delete this category?');">
+                    {% csrf_token %}
+                    <button class="button danger">Delete</button>
+                  </form>
+                {% else %}
+                  <button class="button" disabled style="opacity: 0.5; cursor: not-allowed;" title="Cannot delete category containing products">Delete</button>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="3">No categories created yet.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <aside class="panel">
+    <h3>Quick Info</h3>
+    <p style="color: var(--muted); line-height: 1.5;">
+      Categories help organize your shop's inventory.
+      <br><br>
+      You can only delete a category if there are <strong>zero</strong> products assigned to it. Otherwise, the Delete button will be disabled.
+    </p>
+  </aside>
+</div>
+{% endblock %}

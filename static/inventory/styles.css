@@ -59,6 +59,16 @@ a {
   padding: 22px;
 }
 
+.page.page-wide {
+  max-width: 100%;
+  padding: 16px 28px;
+}
+
+.page.page-pos {
+  max-width: 1440px;
+  padding: 16px 24px;
+}
+
 .heading {
   align-items: center;
   display: flex;
@@ -238,8 +248,8 @@ label {
 
 .pos-layout {
   display: grid;
-  gap: 20px;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 28px;
+  grid-template-columns: minmax(0, 1fr) 420px;
 }
 
 .checkout {
@@ -249,32 +259,137 @@ label {
 }
 
 .checkout strong {
-  display: block;
-  font-size: 38px;
-  margin: 10px 0 18px;
+  display: inline;
+  font-size: inherit;
+  margin: 0;
 }
 
 .checkout form {
   display: grid;
-  gap: 14px;
+  gap: 10px;
+}
+
+/* Page-POS specific scaling overrides for a larger checkout experience */
+.page-pos {
+  font-size: 16px;
+}
+
+.page-pos input,
+.page-pos select {
+  font-size: 18px !important;
+  padding: 12px 16px !important;
+  min-height: 48px !important;
+}
+
+.page-pos .scan-box {
+  grid-template-columns: minmax(0, 1fr) 120px auto;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.page-pos .scan-box input,
+.page-pos .scan-box button {
+  font-size: 20px !important;
+  min-height: 56px !important;
+  padding: 14px 20px !important;
+}
+
+.page-pos table th {
+  font-size: 16px !important;
+  padding: 12px 8px !important;
+}
+
+.page-pos table td {
+  font-size: 18px !important;
+  padding: 12px 8px !important;
+}
+
+.page-pos .link-button {
+  font-size: 16px !important;
+}
+
+.page-pos .checkout h3 {
+  font-size: 22px !important;
+}
+
+.page-pos .summary-breakdown {
+  font-size: 17px !important;
+  margin: 12px 0 !important;
+  padding-top: 12px !important;
+}
+
+.page-pos .summary-breakdown strong {
+  font-size: 18px !important;
+}
+
+.page-pos #summary-total {
+  font-size: 32px !important;
+}
+
+.page-pos #summary-change-due {
+  font-size: 28px !important;
+}
+
+.page-pos .button.primary.wide {
+  font-size: 20px !important;
+  padding: 14px !important;
+  min-height: 52px !important;
 }
 
 .messages {
+  position: fixed;
+  top: 75px;
+  right: 20px;
+  z-index: 9999;
   display: grid;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: 10px;
+  max-width: 350px;
+  width: 100%;
 }
 
 .message {
-  background: #eef7f4;
+  background: var(--panel);
   border-left: 4px solid var(--accent);
-  padding: 10px 12px;
+  padding: 14px 16px;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  animation: slideIn 0.3s ease forwards;
+  color: var(--ink);
 }
 
-.message.error {
-  background: #fff0f0;
-  border-left-color: var(--danger);
+@keyframes slideIn {
+  from { transform: translateX(120%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
 }
+
+.message.success {
+  background: #f0fdf4;
+  border-left-color: #22c55e;
+  color: #15803d;
+}
+
+.message.error,
+.message.danger {
+  background: #fef2f2;
+  border-left-color: #ef4444;
+  color: #991b1b;
+}
+
+.message.warning {
+  background: #fffbeb;
+  border-left-color: #f59e0b;
+  color: #92400e;
+}
+
+.message.info {
+  background: #eff6ff;
+  border-left-color: #3b82f6;
+  color: #1e40af;
+}
+
 
 .found {
   background: #eef7f4;

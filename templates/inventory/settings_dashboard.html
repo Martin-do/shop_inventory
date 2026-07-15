@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Settings Dashboard{% endblock %}
+{% block content %}
+<section class="heading">
+  <h1>Store Settings</h1>
+  <div class="actions">
+    <a class="button" href="{% url 'settings_category_list' %}">Manage Categories</a>
+    <a class="button" href="{% url 'settings_staff_list' %}">Manage Staff</a>
+  </div>
+</section>
+
+<div class="pos-layout">
+  <div>
+    <form class="form panel" method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      
+      <label>Store Name
+        {{ form.store_name }}
+        {{ form.store_name.errors }}
+      </label>
+
+      <label>Store Logo (Optional)
+        {% if form.instance.store_logo %}
+          <div style="margin-bottom: 10px;">
+            <img src="{{ form.instance.store_logo.url }}" alt="Logo" style="max-height: 80px; object-fit: contain; border: 1px solid var(--line); border-radius: 4px; padding: 4px;">
+          </div>
+        {% endif %}
+        {{ form.store_logo }}
+        {{ form.store_logo.errors }}
+      </label>
+
+      <label>Enable Tax Calculations
+        <span style="display: flex; align-items: center; gap: 10px;">
+          {{ form.enable_tax }} Yes, calculate tax at checkout
+        </span>
+        {{ form.enable_tax.errors }}
+      </label>
+
+      <label>Default Tax Rate (%)
+        {{ form.default_tax_rate }}
+        {{ form.default_tax_rate.errors }}
+      </label>
+
+      <label>Receipt Header Text
+        {{ form.receipt_header }}
+        <small class="field-help">{{ form.receipt_header.help_text }}</small>
+        {{ form.receipt_header.errors }}
+      </label>
+
+      <div style="margin-top: 30px; border-top: 1px solid var(--line); padding-top: 20px;">
+        <h3 style="margin-bottom: 15px;">Google Drive Backup Integration</h3>
+        
+        {% if form.instance.google_service_account_json and form.instance.google_drive_folder_id and not form.google_service_account_json.errors and not form.google_drive_folder_id.errors %}
+          <!-- Configured State Card -->
+          <div id="backup-status-card" style="background: #f4fbf9; border: 1px solid #ccece6; padding: 16px; border-radius: 6px; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+              <span style="font-size: 18px; line-height: 1;">🔒</span>
+              <strong style="color: #0f5132; font-size: 14.5px;">Google Drive Credentials Configured</strong>
+            </div>
+            <div style="font-size: 13.5px; color: #1f513c; display: grid; gap: 8px; margin-bottom: 16px;">
+              <div><strong>Service Account Key:</strong> <span style="background: #e8f5f1; padding: 3px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; color: #0f5132; border: 1px solid #b3e2d5;">✅ Active & Validated</span></div>
+              <div><strong>Backup Folder ID:</strong> <span style="font-family: monospace; font-size: 12px; background: #f8faf9; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--line); color: var(--ink);">{{ form.instance.google_drive_folder_id|slice:":8" }}...{{ form.instance.google_drive_folder_id|slice:"-4:" }}</span></div>
+            </div>
+            <button type="button" class="button" id="btn-edit-backup-creds" style="font-size: 13px; padding: 6px 12px; min-height: auto; font-weight: bold;">Modify Credentials</button>
+          </div>
+          
+          <!-- Hidden Inputs Container -->
+          <div id="backup-inputs-container" style="display: none;">
+            <label>Google Service Account credentials.json
+              {{ form.google_service_account_json }}
+              <small class="field-help">{{ form.google_service_account_json.help_text }}</small>
+              {{ form.google_service_account_json.errors }}
+            </label>
+
+            <label>Google Drive Folder ID
+              {{ form.google_drive_folder_id }}
+              <small class="field-help">The ID of the Google Drive folder where backups should be uploaded.</small>
+              {{ form.google_drive_folder_id.errors }}
+            </label>
+          </div>
+
+          <script>
+            document.addEventListener("DOMContentLoaded", () => {
+              const btnEdit = document.getElementById("btn-edit-backup-creds");
+              if (btnEdit) {
+                btnEdit.addEventListener("click", () => {
+                  document.getElementById("backup-status-card").style.display = "none";
+                  document.getElementById("backup-inputs-container").style.display = "block";
+                });
+              }
+            });
+          </script>
+        {% else %}
+          <!-- Unconfigured State (Show Inputs) -->
+          <div>
+            <label>Google Service Account credentials.json
+              {{ form.google_service_account_json }}
+              <small class="field-help">{{ form.google_service_account_json.help_text }}</small>
+              {{ form.google_service_account_json.errors }}
+            </label>
+
+            <label>Google Drive Folder ID
+              {{ form.google_drive_folder_id }}
+              <small class="field-help">The ID of the Google Drive folder where backups should be uploaded.</small>
+              {{ form.google_drive_folder_id.errors }}
+            </label>
+          </div>
+        {% endif %}
+
+        <label>Enable Automatic Backups
+          <span style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
+            {{ form.auto_backup_enabled }} Yes, periodically back up in the background
+          </span>
+          {{ form.auto_backup_enabled.errors }}
+        </label>
+
+        <label>Auto-Backup Interval (Hours)
+          {{ form.auto_backup_interval_hours }}
+          {{ form.auto_backup_interval_hours.errors }}
+        </label>
+      </div>
+
+      <button class="button primary" style="margin-top: 20px;">Save Settings</button>
+    </form>
+  </div>
+
+  <aside class="panel">
+    <h2>Admin Actions</h2>
+    <p style="color: var(--muted); margin-bottom: 18px;">Quick links for store management.</p>
+    <div style="display: grid; gap: 10px; margin-bottom: 24px;">
+      <a class="button wide" style="text-align: center;" href="{% url 'settings_category_list' %}">Categories</a>
+      <a class="button wide" style="text-align: center;" href="{% url 'settings_staff_list' %}">Staff Accounts</a>
+      <hr style="border: 0; border-top: 1px solid var(--line); margin: 10px 0;">
+      <a class="button wide danger" style="text-align: center;" href="/admin/" target="_blank">Django Native Admin &rarr;</a>
+    </div>
+
+    <h2>Google Drive Backup</h2>
+    <p style="color: var(--muted); margin-bottom: 12px;">Back up database and media files to Google Drive.</p>
+    <div style="margin-bottom: 24px;">
+      <form action="{% url 'trigger_manual_backup' %}" method="post">
+        {% csrf_token %}
+        <button type="submit" class="button primary wide" style="text-align: center; display: block; width: 100%;">Backup Now</button>
+      </form>
+    </div>
+
+    <h2>Recent Backups</h2>
+    <div style="max-height: 250px; overflow-y: auto; font-size: 13px; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fafafa;">
+      {% if backup_logs %}
+        <ul style="list-style: none; padding: 0; margin: 0; display: grid; gap: 8px;">
+          {% for log in backup_logs %}
+            <li style="border-bottom: 1px solid var(--line); padding-bottom: 6px; margin-bottom: 2px;">
+              <div style="display: flex; justify-content: space-between; font-weight: bold;">
+                <span style="max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block;" title="{{ log.file_name }}">{{ log.file_name }}</span>
+                {% if log.status == 'success' %}
+                  <span style="color: var(--success);">Success</span>
+                {% else %}
+                  <span style="color: var(--danger);">Failed</span>
+                {% endif %}
+              </div>
+              <div style="color: var(--muted); font-size: 11px; margin-top: 2px;">
+                {{ log.timestamp|date:"Y-m-d H:i:s" }}
+                {% if log.file_size_bytes %}
+                  | {{ log.file_size_bytes|filesizeformat }}
+                {% endif %}
+              </div>
+              {% if log.error_message %}
+                <div style="color: var(--danger); font-size: 11px; margin-top: 3px; background: #fff5f5; padding: 4px; border-radius: 4px; word-break: break-all;">
+                  {{ log.error_message }}
+                </div>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p style="color: var(--muted); margin: 0; text-align: center;">No backup logs found.</p>
+      {% endif %}
+    </div>
+  </aside>
+</div>
+{% endblock %}

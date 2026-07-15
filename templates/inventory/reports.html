@@ -10,7 +10,7 @@
 </section>
 
 <section class="stats">
-  <article><span>{{ sales_total }}</span><p>Total sales</p></article>
+  <article><span>₦{{ sales_total|intcomma }}</span><p>Total sales</p></article>
   <article><span>{{ sales_count }}</span><p>Transactions</p></article>
   <article><span>{{ items_sold }}</span><p>Items sold</p></article>
 </section>
@@ -21,7 +21,7 @@
     <thead><tr><th>Product</th><th>Qty Sold</th><th>Sales</th></tr></thead>
     <tbody>
       {% for row in top_products %}
-        <tr><td>{{ row.product__name }}</td><td>{{ row.quantity }}</td><td>{{ row.sales }}</td></tr>
+        <tr><td>{{ row.product__name }}</td><td>{{ row.quantity }}</td><td>₦{{ row.sales|intcomma }}</td></tr>
       {% empty %}
         <tr><td colspan="3">No sales yet.</td></tr>
       {% endfor %}

@@ -56,8 +56,13 @@ class AuthTests(TestCase):
             self.assertIn(reverse("login"), response.url)
 
     def test_authenticated_access(self):
-        User.objects.create_user("cashier", password="pw")
-        self.client.force_login(User.objects.get(username="cashier"))
+        user = User.objects.create_user("cashier", password="pw")
+        self.client.force_login(user)
+        response = self.client.get(reverse("dashboard"))
+        self.assertRedirects(response, reverse("pos"))
+
+        admin = User.objects.create_user("admin", password="pw", is_staff=True)
+        self.client.force_login(admin)
         self.assertEqual(self.client.get(reverse("dashboard")).status_code, 200)
 
 
@@ -133,7 +138,7 @@ class ProductFormTests(TestCase):
 
 class ProductViewTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user("cashier", password="pw")
+        self.user = User.objects.create_user("cashier", password="pw", is_staff=True)
         self.client.force_login(self.user)
 
     def test_create_with_opening_stock_records_movement(self):
@@ -182,7 +187,7 @@ class CheckoutTests(TestCase):
         self._add_to_cart(2)
         response = self.client.post(reverse("pos_checkout"), {"amount_paid": "20.00", "cashier_name": "Sam"})
         sale = Sale.objects.get()
-        self.assertRedirects(response, reverse("sale_detail", args=[sale.pk]))
+        self.assertRedirects(response, reverse("sale_receipt", args=[sale.pk]))
         self.assertEqual(sale.total, Decimal("20.00"))
         self.assertEqual(SaleItem.objects.count(), 1)
         self.assertEqual(self.product.stock_on_hand, 3)
@@ -207,3 +212,125 @@ class CheckoutTests(TestCase):
         response = self.client.post(reverse("pos_checkout"), {"amount_paid": "40.00", "cashier_name": ""})
         self.assertRedirects(response, reverse("pos"))
         self.assertEqual(Sale.objects.count(), 0)
+
+    def test_checkout_with_discount_and_tax(self):
+        # Cart total: 2 items * 10.00 = 20.00
+        # Discount: 5.00
+        # Tax rate: 10%
+        # Taxable amount: 20.00 - 5.00 = 15.00
+        # Tax amount: 15.00 * 0.10 = 1.50
+        # Final total: 15.00 + 1.50 = 16.50
+        self._add_to_cart(2)
+        response = self.client.post(reverse("pos_checkout"), {
+            "amount_paid": "16.50",
+            "cashier_name": "Sam",
+            "discount_amount": "5.00",
+            "tax_rate": "10.00",
+        })
+        sale = Sale.objects.get()
+        self.assertRedirects(response, reverse("sale_receipt", args=[sale.pk]))
+        self.assertEqual(sale.total, Decimal("16.50"))
+        self.assertEqual(sale.discount_amount, Decimal("5.00"))
+        self.assertEqual(sale.tax_amount, Decimal("1.50"))
+
+    def test_checkout_with_customer(self):
+        from .models import Customer
+        customer = Customer.objects.create(name="Alice", phone="1234567890")
+        self._add_to_cart(1)
+        response = self.client.post(reverse("pos_checkout"), {
+            "amount_paid": "10.00",
+            "cashier_name": "Sam",
+            "customer": customer.id,
+        })
+        sale = Sale.objects.get()
+        self.assertEqual(sale.customer, customer)
+
+    def test_revert_sale_restores_stock(self):
+        self._add_to_cart(2)
+        self.client.post(reverse("pos_checkout"), {"amount_paid": "20.00", "cashier_name": "Sam"})
+        sale = Sale.objects.get()
+        self.assertEqual(self.product.stock_on_hand, 3)
+        self.assertEqual(sale.status, Sale.STATUS_COMPLETED)
+
+        # Revert the sale
+        response = self.client.post(reverse("sale_revert", args=[sale.pk]))
+        self.assertRedirects(response, reverse("sale_receipt", args=[sale.pk]))
+        sale.refresh_from_db()
+        self.assertEqual(sale.status, Sale.STATUS_REVERTED)
+        self.assertEqual(self.product.stock_on_hand, 5)
+
+    def test_cannot_revert_already_reverted_sale(self):
+        self._add_to_cart(1)
+        self.client.post(reverse("pos_checkout"), {"amount_paid": "10.00", "cashier_name": "Sam"})
+        sale = Sale.objects.get()
+        self.client.post(reverse("sale_revert", args=[sale.pk]))
+        
+        # Try reverting again
+        response = self.client.post(reverse("sale_revert", args=[sale.pk]))
+        self.assertRedirects(response, reverse("sale_receipt", args=[sale.pk]))
+        # Ensure it didn't add stock again
+        self.assertEqual(self.product.stock_on_hand, 5)
+
+
+from unittest.mock import patch
+import os
+from .models import BackupLog, StoreSettings
+from .backup_utils import create_backup_zip, run_backup_job
+
+class BackupTests(TestCase):
+    def setUp(self):
+        self.staff_user = User.objects.create_user("admin", password="pw", is_staff=True)
+        self.cashier_user = User.objects.create_user("cashier", password="pw", is_staff=False)
+        self.product = make_product(barcode="4001", selling_price="10.00", stock=5)
+
+    def test_create_backup_zip(self):
+        zip_path, filename = create_backup_zip()
+        self.assertTrue(os.path.exists(zip_path))
+        self.assertTrue(filename.startswith("backup_"))
+        self.assertTrue(filename.endswith(".zip"))
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+
+    def test_backup_views_permissions(self):
+        response = self.client.post(reverse("trigger_manual_backup"))
+        self.assertEqual(response.status_code, 302)
+
+        self.client.force_login(self.cashier_user)
+        response = self.client.post(reverse("trigger_manual_backup"))
+        self.assertEqual(response.status_code, 302)
+
+        self.client.force_login(self.staff_user)
+        response = self.client.post(reverse("trigger_manual_backup"))
+        self.assertRedirects(response, reverse("settings_dashboard"))
+
+    def test_run_backup_job_unconfigured(self):
+        settings = StoreSettings.get_solo()
+        settings.google_service_account_json = ""
+        settings.google_drive_folder_id = ""
+        settings.save()
+
+        success, message = run_backup_job()
+        self.assertFalse(success)
+        self.assertIn("not configured", message)
+
+        last_log = BackupLog.objects.first()
+        self.assertIsNotNone(last_log)
+        self.assertEqual(last_log.status, "failed")
+        self.assertIn("not configured", last_log.error_message)
+
+    @patch("inventory.backup_utils.upload_to_google_drive")
+    def test_run_backup_job_configured_mocked(self, mock_upload):
+        mock_upload.return_value = "mock_drive_file_id"
+
+        settings = StoreSettings.get_solo()
+        settings.google_service_account_json = '{"type": "service_account"}'
+        settings.google_drive_folder_id = "mock_folder_id"
+        settings.save()
+
+        success, message = run_backup_job()
+        self.assertTrue(success)
+        self.assertIn("mock_drive_file_id", message)
+
+        last_log = BackupLog.objects.first()
+        self.assertEqual(last_log.status, "success")
+        self.assertTrue(last_log.file_name.startswith("backup_"))

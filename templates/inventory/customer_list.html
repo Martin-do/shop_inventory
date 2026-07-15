@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Customers{% endblock %}
+{% block content %}
+<section class="heading">
+  <h1>Customers</h1>
+  <a class="button primary" href="{% url 'customer_create' %}">Add Customer</a>
+</section>
+
+<form class="search" method="get">
+  <input name="q" value="{{ query }}" placeholder="Search by name or phone number...">
+  <button class="button">Search</button>
+</form>
+
+<section class="panel">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Phone</th>
+        <th>Email</th>
+        <th>Notes</th>
+        <th>Registered Date</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for customer in customers %}
+        <tr>
+          <td><strong>{{ customer.name }}</strong></td>
+          <td>{{ customer.phone|default:"-" }}</td>
+          <td>{{ customer.email|default:"-" }}</td>
+          <td>{{ customer.notes|default:"-" }}</td>
+          <td>{{ customer.created_at|date:"M d, Y" }}</td>
+          <td>
+            <a class="button" href="{% url 'customer_update' customer.pk %}">Edit</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="6">No customers registered yet.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

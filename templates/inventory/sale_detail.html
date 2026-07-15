@@ -1,18 +1,24 @@
 {% extends "base.html" %}
-{% block title %}Sale #{{ sale.id }}{% endblock %}
+{% block title %}Sale {{ sale.receipt_number|default:sale.id }}{% endblock %}
 {% block content %}
 <section class="heading">
-  <h1>Sale #{{ sale.id }}</h1>
-  <a class="button primary" href="{% url 'pos' %}">New Sale</a>
+  <h1>Sale {{ sale.receipt_number|default:sale.id }}</h1>
+  <div style="display: flex; gap: 10px; align-items: center;">
+    {% if sale.status == 'reverted' %}
+      <span style="background: var(--danger); color: white; padding: 4px 10px; border-radius: 4px; font-size: 13px; font-weight: bold;">REVERTED</span>
+    {% endif %}
+    <a class="button primary" href="{% url 'pos' %}">New Sale</a>
+  </div>
 </section>
 
 <section class="panel receipt">
   <dl class="summary-list">
     <div><dt>Date</dt><dd>{{ sale.created_at|date:"M j, Y H:i" }}</dd></div>
     <div><dt>Cashier</dt><dd>{{ sale.cashier_name|default:"-" }}</dd></div>
-    <div><dt>Total</dt><dd>{{ sale.total }}</dd></div>
-    <div><dt>Paid</dt><dd>{{ sale.amount_paid }}</dd></div>
-    <div><dt>Change</dt><dd>{{ sale.change_due }}</dd></div>
+    <div><dt>Total</dt><dd>₦{{ sale.total|intcomma }}</dd></div>
+    <div><dt>Paid</dt><dd>₦{{ sale.amount_paid|intcomma }}</dd></div>
+    <div><dt>Change</dt><dd>₦{{ sale.change_due|intcomma }}</dd></div>
+    <div><dt>Status</dt><dd><strong>{{ sale.get_status_display }}</strong></dd></div>
   </dl>
 
   <table>
@@ -20,13 +26,20 @@
     <tbody>
       {% for item in sale.items.all %}
         <tr>
-          <td>{{ item.product.name }}<small>{{ item.product.barcode }}</small></td>
+          <td>{{ item.product.name }}{% if item.product.variant %} ({{ item.product.variant }}){% endif %}<small>{{ item.product.barcode }}</small></td>
           <td>{{ item.quantity }}</td>
-          <td>{{ item.unit_price }}</td>
-          <td>{{ item.line_total }}</td>
+          <td>₦{{ item.unit_price|intcomma }}</td>
+          <td>₦{{ item.line_total|intcomma }}</td>
         </tr>
       {% endfor %}
     </tbody>
   </table>
+
+  {% if sale.status == 'completed' %}
+    <form method="post" action="{% url 'sale_revert' sale.id %}" onsubmit="return confirm('Are you sure you want to revert/cancel this sale? Stock levels will be restored.');" style="margin-top: 20px;">
+      {% csrf_token %}
+      <button class="button danger wide">Revert & Cancel Sale</button>
+    </form>
+  {% endif %}
 </section>
 {% endblock %}

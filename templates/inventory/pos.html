@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}POS{% endblock %}
+{% block page_class %}page-pos{% endblock %}
 {% block content %}
 <section class="pos-layout">
   <div>
@@ -7,27 +8,45 @@
       <h1>Checkout</h1>
       <form method="post" action="{% url 'pos_clear' %}">
         {% csrf_token %}
-        <button class="button danger">Clear</button>
+        <button class="button danger">Clear Cart</button>
       </form>
     </section>
 
-    <form class="scan-box" method="post" action="{% url 'pos_add' %}">
+    <form class="scan-box" method="post" action="{% url 'pos_add' %}" id="pos-add-form">
       {% csrf_token %}
-      <input id="barcode-input" name="barcode" placeholder="Scan barcode or type code" required autofocus autocomplete="off">
-      <input name="quantity" type="number" min="1" value="1" aria-label="Quantity">
+      <div style="position: relative; width: 100%;">
+        <input id="barcode-input" name="barcode" placeholder="Scan barcode or type product name..." required autofocus autocomplete="off">
+        <!-- Floating Suggestions Dropdown -->
+        <div id="search-suggestions" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; max-height: 250px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow-lg); z-index: 100; margin-top: 4px;">
+        </div>
+      </div>
+      <input name="quantity" id="pos-quantity-input" type="number" min="1" value="1" aria-label="Quantity" style="max-width: 90px;">
       <button class="button primary">Add</button>
     </form>
 
     <section class="panel">
       <table class="cart">
-        <thead><tr><th>Item</th><th>Qty</th><th>Total</th><th></th></tr></thead>
+        <thead><tr><th>Image</th><th>Item</th><th style="text-align: center;">Qty</th><th>Total</th><th></th></tr></thead>
         <tbody>
           {% for line in lines %}
-            <tr>
-              <td>{{ line.product.name }}<small>{{ line.product.barcode }}</small></td>
-              <td>{{ line.quantity }}</td>
-              <td>{{ line.line_total }}</td>
-              <td>
+            <tr style="font-size: 15px;">
+              <td style="width: 60px; vertical-align: middle;">
+                {% if line.product.image %}
+                  <img src="{{ line.product.image.url }}" alt="{{ line.product.name }}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line);">
+                {% else %}
+                  <div style="width: 50px; height: 50px; background: #eef2f0; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted); font-size: 22px; border: 1px solid var(--line);">📦</div>
+                {% endif %}
+              </td>
+              <td style="vertical-align: middle;">
+                <span style="font-size: 16px; font-weight: bold; color: var(--ink);">{{ line.product.name }}</span>
+                {% if line.product.variant %}
+                  <br><span style="font-size: 13px; font-weight: bold; color: var(--accent); background: #e8f3f1; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px;">{{ line.product.variant }}</span>
+                {% endif %}
+                <small style="margin-top: 4px; font-size: 11px;">{{ line.product.barcode }}</small>
+              </td>
+              <td style="font-size: 18px; font-weight: bold; vertical-align: middle; text-align: center;">{{ line.quantity }}</td>
+              <td style="font-size: 18px; font-weight: bold; color: var(--ink); vertical-align: middle;">₦{{ line.line_total|intcomma }}</td>
+              <td style="vertical-align: middle;">
                 <form method="post" action="{% url 'pos_remove' line.product.barcode %}">
                   {% csrf_token %}
                   <button class="link-button">Remove</button>
@@ -35,28 +54,390 @@
               </td>
             </tr>
           {% empty %}
-            <tr><td colspan="4">Scan an item to begin.</td></tr>
+            <tr><td colspan="5">Scan an item to begin.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </section>
   </div>
 
-  <aside class="checkout panel">
-    <h2>Total</h2>
-    <strong>{{ total }}</strong>
-    <form method="post" action="{% url 'pos_checkout' %}">
+  <aside class="checkout panel" style="padding: 16px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <h3 style="margin: 0; font-size: 20px;">Summary</h3>
+      <button type="button" id="mute-toggle" class="button" style="padding: 3px 8px; font-size: 12px; min-height: auto;">🔊 Mute</button>
+    </div>
+
+    <div class="summary-breakdown" style="margin: 8px 0; border-top: 1px solid var(--line); padding-top: 10px; font-size: 15px;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:6px; align-items: center;">
+        <span>Subtotal:</span>
+        <strong id="summary-subtotal" style="font-size: 16px; font-weight: bold; margin: 0; display: inline; font-family: monospace;">₦{{ total|intcomma }}</strong>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:6px; color: var(--danger); align-items: center;">
+        <span>Discount:</span>
+        <strong id="summary-discount" style="font-size: 16px; font-weight: bold; margin: 0; display: inline; font-family: monospace;">-₦0.00</strong>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:6px; color: var(--accent); align-items: center;">
+        <span>Tax:</span>
+        <strong id="summary-tax" style="font-size: 16px; font-weight: bold; margin: 0; display: inline; font-family: monospace;">₦0.00</strong>
+      </div>
+      <div style="display:flex; justify-content:space-between; border-top: 2px solid var(--ink); padding-top: 8px; font-size: 20px; align-items: center; margin-top: 6px;">
+        <span style="font-weight: bold;">Total:</span>
+        <strong id="summary-total" style="font-size: 26px; font-weight: 800; margin: 0; display: inline; color: var(--accent); font-family: monospace;">₦{{ total|intcomma }}</strong>
+      </div>
+    </div>
+
+    <form method="post" action="{% url 'pos_checkout' %}" id="checkout-form" style="gap: 10px;">
       {% csrf_token %}
-      <label>Cashier <input name="cashier_name" value="{{ checkout_form.cashier_name.value|default:'' }}"></label>
-      <label>Amount Paid <input name="amount_paid" type="number" step="0.01" min="0" value="{{ total }}"></label>
-      <button class="button primary wide">Complete Sale</button>
+      <label style="font-size: 15px; font-weight: bold; gap: 4px;">Customer
+        <select name="customer" id="id_customer" style="font-size: 15px; padding: 8px; min-height: 40px;">
+          <option value="">— Guest Customer —</option>
+          {% for customer in customers %}
+            <option value="{{ customer.id }}">{{ customer.name }}{% if customer.phone %} ({{ customer.phone }}){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label style="display: flex; align-items: center; gap: 8px; margin: 6px 0 2px 0; cursor: pointer; font-weight: bold; font-size: 15px; user-select: none;">
+        <input type="checkbox" id="toggle-discount" style="width: auto; margin: 0; transform: scale(1.2);"> Apply Discount
+      </label>
+
+      <div id="discount-wrapper" style="display: none; margin-bottom: 6px;">
+        <label style="font-size: 14px; font-weight: bold; color: var(--danger); gap: 4px;">Discount Amount (Flat)
+          <input name="discount_amount" id="id_discount_amount" type="number" step="0.01" min="0" value="0.00" style="font-size: 16px; padding: 6px; min-height: 38px;">
+        </label>
+      </div>
+
+      <input type="hidden" name="tax_rate" id="id_tax_rate" value="{{ default_tax_rate }}">
+      <input type="hidden" name="cashier_name" value="{{ user.get_full_name|default:user.username }}">
+
+      <label style="font-size: 15px; font-weight: bold; gap: 4px;">Amount Paid
+        <input name="amount_paid" id="id_amount_paid" type="text" inputmode="decimal" value="{{ total }}" style="font-size: 20px; padding: 10px; font-weight: bold; text-align: right; min-height: 44px;">
+      </label>
+
+      <div style="display:flex; justify-content:space-between; align-items: center; margin-top:8px; font-size: 18px; font-weight: bold; border-top: 1px dashed var(--line); padding-top: 10px; color: var(--success);">
+        <span>Change Due:</span>
+        <span id="summary-change-due" style="font-size: 24px; font-family: monospace;">₦0.00</span>
+      </div>
+
+      <button class="button primary wide" style="margin-top: 8px; font-size: 17px; padding: 12px; min-height: 46px;">Complete Sale</button>
     </form>
   </aside>
 </section>
 
+<!-- Checkout Confirmation Modal -->
+<div id="checkout-confirm-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center;">
+  <div style="background: var(--panel); padding: 25px; border-radius: 12px; max-width: 480px; width: 90%; box-shadow: var(--shadow-lg); border: 1px solid var(--line);">
+    <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 20px;">Confirm Transaction</h3>
+    
+    <!-- Scrollable Cart Summary -->
+    <div style="max-height: 150px; overflow-y: auto; margin-bottom: 15px; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fafafa;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: var(--ink);">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--line); text-align: left; font-weight: bold;">
+            <th style="padding-bottom: 5px;">Item</th>
+            <th style="text-align: right; padding-bottom: 5px; width: 60px;">Qty</th>
+            <th style="text-align: right; padding-bottom: 5px; width: 90px;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in lines %}
+            <tr style="border-bottom: 1px dashed var(--line);">
+              <td style="padding: 6px 0;">
+                {{ line.product.name }}{% if line.product.variant %} ({{ line.product.variant }}){% endif %}
+              </td>
+              <td style="text-align: right; padding: 6px 0;">{{ line.quantity }}</td>
+              <td style="text-align: right; padding: 6px 0;">₦{{ line.line_total|intcomma }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; font-size: 15px; border-bottom: 1px solid var(--line); padding-bottom: 15px;">
+      <div style="display: flex; justify-content: space-between;">
+        <span style="color: var(--muted);">Customer:</span>
+        <strong id="modal-customer">Guest Customer</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 10px;">
+        <span style="color: var(--muted);">Subtotal:</span>
+        <strong id="modal-subtotal">₦0.00</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; color: var(--danger);">
+        <span>Discount:</span>
+        <strong id="modal-discount">-₦0.00</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; color: var(--accent);">
+        <span>Tax:</span>
+        <strong id="modal-tax">₦0.00</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 22px; margin-top: 5px; border-top: 2px solid var(--ink); padding-top: 10px;">
+        <strong>Total Amount:</strong>
+        <strong id="modal-total" style="color: var(--primary);">₦0.00</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-top: 5px; border-top: 1px dashed var(--line); padding-top: 8px;">
+        <span>Amount Paid:</span>
+        <strong id="modal-paid">₦0.00</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-weight: bold; color: var(--success);">
+        <span>Change Due:</span>
+        <strong id="modal-change">₦0.00</strong>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 12px;">
+      <button type="button" id="btn-modal-confirm" class="button primary wide">Confirm & Print</button>
+      <button type="button" id="btn-modal-cancel" class="button wide">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
+  // Keep barcode input focused
   const input = document.getElementById("barcode-input");
-  window.addEventListener("click", () => input.focus());
+  window.addEventListener("click", (e) => {
+    // Prevent focus stealing when cashier is clicking form fields
+    if (e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT" && e.target.tagName !== "OPTION" && e.target.tagName !== "BUTTON" && e.target.tagName !== "A") {
+      input.focus();
+    }
+  });
   window.addEventListener("load", () => input.focus());
+
+  // Mute setting logic
+  const muteBtn = document.getElementById("mute-toggle");
+  function updateMuteBtnText() {
+    const isMuted = localStorage.getItem("mute_audio") === "true";
+    muteBtn.innerText = isMuted ? "🔇 Mute On" : "🔊 Mute Off";
+  }
+  if (muteBtn) {
+    muteBtn.addEventListener("click", () => {
+      const isMuted = localStorage.getItem("mute_audio") === "true";
+      localStorage.setItem("mute_audio", !isMuted);
+      updateMuteBtnText();
+    });
+    updateMuteBtnText();
+  }
+
+  // Dynamic calculations logic
+  const subtotalVal = parseFloat("{{ total }}") || 0;
+  const discountInput = document.getElementById("id_discount_amount");
+  const taxRateInput = document.getElementById("id_tax_rate");
+  const amountPaidInput = document.getElementById("id_amount_paid");
+
+  const summaryDiscount = document.getElementById("summary-discount");
+  const summaryTax = document.getElementById("summary-tax");
+  const summaryTotal = document.getElementById("summary-total");
+  const summaryChangeDue = document.getElementById("summary-change-due");
+
+  let userManuallySetAmountPaid = false;
+  amountPaidInput.addEventListener("input", (e) => {
+    let cursor = amountPaidInput.selectionStart;
+    let oldLen = amountPaidInput.value.length;
+
+    let cleanVal = amountPaidInput.value.replace(/[^\d.]/g, "");
+    let parts = cleanVal.split(".");
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    
+    if (parts.length > 1) {
+      amountPaidInput.value = parts[0] + "." + parts[1].slice(0, 2);
+    } else {
+      amountPaidInput.value = parts[0];
+    }
+    
+    let newLen = amountPaidInput.value.length;
+    amountPaidInput.setSelectionRange(cursor + (newLen - oldLen), cursor + (newLen - oldLen));
+
+    userManuallySetAmountPaid = true;
+    updateCheckoutSummary();
+  });
+
+  function updateCheckoutSummary() {
+    let discount = parseFloat(discountInput.value) || 0;
+    if (discount > subtotalVal) {
+      discount = subtotalVal;
+      discountInput.value = subtotalVal.toFixed(2);
+    }
+    let taxRate = parseFloat(taxRateInput.value) || 0;
+    let taxableAmount = subtotalVal - discount;
+    let taxAmount = taxableAmount * (taxRate / 100);
+    let finalTotal = taxableAmount + taxAmount;
+
+    if (!userManuallySetAmountPaid) {
+      amountPaidInput.value = finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    let amountPaid = parseFloat(amountPaidInput.value.replace(/,/g, "")) || 0;
+    let changeDue = amountPaid - finalTotal;
+
+    summaryDiscount.innerText = "-₦" + discount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    summaryTax.innerText = "₦" + taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    summaryTotal.innerText = "₦" + finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    summaryChangeDue.innerText = changeDue < 0 ? "₦0.00" : "₦" + changeDue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  discountInput.addEventListener("input", updateCheckoutSummary);
+  taxRateInput.addEventListener("input", updateCheckoutSummary);
+  
+  const toggleDiscount = document.getElementById("toggle-discount");
+  const discountWrapper = document.getElementById("discount-wrapper");
+  if (toggleDiscount && discountWrapper) {
+    toggleDiscount.addEventListener("change", () => {
+      if (toggleDiscount.checked) {
+        discountWrapper.style.display = "block";
+        discountInput.focus();
+      } else {
+        discountWrapper.style.display = "none";
+        discountInput.value = "0.00";
+        updateCheckoutSummary();
+      }
+    });
+  }
+  
+  // Run on load
+  updateCheckoutSummary();
+
+  // Modal Confirm Logic
+  const checkoutForm = document.getElementById("checkout-form");
+  const confirmModal = document.getElementById("checkout-confirm-modal");
+  const btnModalConfirm = document.getElementById("btn-modal-confirm");
+  const btnModalCancel = document.getElementById("btn-modal-cancel");
+
+  let isConfirmed = false;
+
+  checkoutForm.addEventListener("submit", (e) => {
+    if (!isConfirmed) {
+      e.preventDefault();
+      
+      const discount = parseFloat(discountInput.value) || 0;
+      const taxRate = parseFloat(taxRateInput.value) || 0;
+      const taxableAmount = subtotalVal - discount;
+      const taxAmount = taxableAmount * (taxRate / 100);
+      const finalTotal = taxableAmount + taxAmount;
+      const amountPaid = parseFloat(amountPaidInput.value.replace(/,/g, "")) || 0;
+      const changeDue = amountPaid - finalTotal;
+
+      if (amountPaid < finalTotal) {
+        alert("Amount paid is less than the sale total of " + finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+        return;
+      }
+
+      // Customer Info
+      const customerSelect = document.getElementById("id_customer");
+      const customerName = customerSelect.options[customerSelect.selectedIndex].text;
+      document.getElementById("modal-customer").innerText = customerName;
+
+      document.getElementById("modal-subtotal").innerText = "₦" + subtotalVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      document.getElementById("modal-discount").innerText = "-₦" + discount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      document.getElementById("modal-tax").innerText = "₦" + taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      document.getElementById("modal-total").innerText = "₦" + finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      document.getElementById("modal-paid").innerText = "₦" + amountPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      document.getElementById("modal-change").innerText = changeDue < 0 ? "₦0.00" : "₦" + changeDue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      confirmModal.style.display = "flex";
+    }
+  });
+
+  btnModalConfirm.addEventListener("click", () => {
+    isConfirmed = true;
+    amountPaidInput.value = amountPaidInput.value.replace(/,/g, "");
+    checkoutForm.submit();
+  });
+
+  btnModalCancel.addEventListener("click", () => {
+    confirmModal.style.display = "none";
+  });
+
+  // AJAX Product Autocomplete Search Logic
+  const barcodeInput = document.getElementById("barcode-input");
+  const suggestionsDiv = document.getElementById("search-suggestions");
+  const addForm = document.getElementById("pos-add-form");
+
+  let debounceTimeout = null;
+
+  barcodeInput.addEventListener("input", () => {
+    clearTimeout(debounceTimeout);
+    const query = barcodeInput.value.trim();
+
+    if (query.length < 2) {
+      suggestionsDiv.style.display = "none";
+      return;
+    }
+
+    debounceTimeout = setTimeout(() => {
+      fetch(`/api/products/search/?q=${encodeURIComponent(query)}`)
+        .then(res => res.json())
+        .then(data => {
+          suggestionsDiv.innerHTML = "";
+          if (!data.results || data.results.length === 0) {
+            suggestionsDiv.style.display = "none";
+            return;
+          }
+
+          data.results.forEach(product => {
+            const row = document.createElement("div");
+            row.style.padding = "12px 18px";
+            row.style.borderBottom = "1px solid var(--line)";
+            row.style.cursor = "pointer";
+            row.style.display = "flex";
+            row.style.justifyContent = "space-between";
+            row.style.alignItems = "center";
+            row.style.fontSize = "16px";
+            row.style.color = "var(--ink)";
+            
+            row.addEventListener("mouseover", () => {
+              row.style.background = "#e8f3f1";
+            });
+            row.addEventListener("mouseout", () => {
+              row.style.background = "none";
+            });
+
+            const leftCol = document.createElement("div");
+            leftCol.style.display = "flex";
+            leftCol.style.alignItems = "center";
+
+            const imgDiv = document.createElement("div");
+            imgDiv.style.marginRight = "14px";
+            imgDiv.style.flexShrink = "0";
+            if (product.image_url) {
+              imgDiv.innerHTML = `<img src="${product.image_url}" alt="${product.name}" style="width: 45px; height: 45px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line);">`;
+            } else {
+              imgDiv.innerHTML = `<div style="width: 45px; height: 45px; background: #eef2f0; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted); font-size: 20px; border: 1px solid var(--line);">📦</div>`;
+            }
+            leftCol.appendChild(imgDiv);
+
+            const infoCol = document.createElement("div");
+            infoCol.innerHTML = `<span style="font-size:18px; font-weight:bold;">${product.name}</span> ${product.variant ? `<span style="font-size:13px; font-weight:bold; color:var(--accent); background:#e8f3f1; padding:2px 6px; border-radius:4px; margin-left:6px; display:inline-block; vertical-align:middle;">${product.variant}</span>` : ''}<br><small style="color: var(--muted); font-size:13.5px; margin-top:4px; display:inline-block;">Barcode: ${product.barcode} | Price: ₦${parseFloat(product.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Stock: ${product.stock}</small>`;
+            leftCol.appendChild(infoCol);
+
+            const selectBtn = document.createElement("button");
+            selectBtn.type = "button";
+            selectBtn.className = "button primary";
+            selectBtn.style.padding = "6px 12px";
+            selectBtn.style.fontSize = "13px";
+            selectBtn.style.minHeight = "auto";
+            selectBtn.innerText = "Select";
+
+            row.appendChild(leftCol);
+            row.appendChild(selectBtn);
+
+            row.addEventListener("click", () => {
+              barcodeInput.value = product.barcode;
+              suggestionsDiv.style.display = "none";
+              addForm.submit();
+            });
+
+            suggestionsDiv.appendChild(row);
+          });
+
+          suggestionsDiv.style.display = "block";
+        });
+    }, 200); // 200ms debounce
+  });
+
+  // Close suggestions when clicking outside
+  document.addEventListener("click", (e) => {
+    if (!barcodeInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
+      suggestionsDiv.style.display = "none";
+    }
+  });
 </script>
 {% endblock %}

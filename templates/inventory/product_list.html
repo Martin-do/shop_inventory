@@ -13,13 +13,20 @@
 
 <section class="panel">
   <table>
-    <thead><tr><th>Name</th><th>Barcode</th><th>Price</th><th>Stock</th><th>Reorder</th><th>Status</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Image</th><th>Name</th><th>Barcode</th><th>Price</th><th>Stock</th><th>Reorder</th><th>Status</th><th>Actions</th></tr></thead>
     <tbody>
       {% for product in products %}
         <tr class="{% if product.is_low_stock %}low{% endif %}{% if not product.is_active %} inactive{% endif %}">
-          <td>{{ product.name }}</td>
+          <td>
+            {% if product.image %}
+              <img src="{{ product.image.url }}" alt="{{ product.name }}" style="width: 35px; height: 35px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line);">
+            {% else %}
+              <div style="width: 35px; height: 35px; background: #eef2f0; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--muted); font-size: 15px; border: 1px solid var(--line);">📦</div>
+            {% endif %}
+          </td>
+          <td>{{ product.name }}{% if product.variant %} ({{ product.variant }}){% endif %}</td>
           <td>{{ product.barcode }}</td>
-          <td>{{ product.selling_price }}</td>
+          <td>₦{{ product.selling_price|intcomma }}</td>
           <td>{{ product.stock_on_hand }}</td>
           <td>{{ product.reorder_level }}</td>
           <td>{% if product.is_active %}Active{% else %}Inactive{% endif %}</td>
@@ -32,7 +39,7 @@
           </td>
         </tr>
       {% empty %}
-        <tr><td colspan="7">No products yet.</td></tr>
+        <tr><td colspan="8">No products yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>

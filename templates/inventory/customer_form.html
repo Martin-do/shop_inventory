@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Add/Edit Customer{% endblock %}
+{% block content %}
+<section class="heading">
+  <h1>{{ title }}</h1>
+  <a class="button" href="{% url 'customer_list' %}">Back to List</a>
+</section>
+
+<form class="form panel" method="post">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+
+  {% for field in form %}
+    <label>
+      {{ field.label }}
+      {{ field }}
+      {% if field.help_text %}
+        <small class="field-help">{{ field.help_text }}</small>
+      {% endif %}
+      {{ field.errors }}
+    </label>
+  {% endfor %}
+
+  <button class="button primary">Save Customer</button>
+</form>
+{% endblock %}

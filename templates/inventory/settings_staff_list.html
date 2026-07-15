@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Manage Staff{% endblock %}
+{% block content %}
+<section class="heading">
+  <h1>Staff Accounts</h1>
+  <div class="actions">
+    <a class="button" href="{% url 'settings_dashboard' %}">Back to Settings</a>
+    <a class="button primary" href="{% url 'settings_staff_create' %}">Create Staff Account</a>
+  </div>
+</section>
+
+<section class="panel">
+  <table>
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>First Name</th>
+        <th>Last Name</th>
+        <th>Status</th>
+        <th>Role</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for member in staff_members %}
+        <tr>
+          <td>{{ member.username }}</td>
+          <td>{{ member.first_name }}</td>
+          <td>{{ member.last_name }}</td>
+          <td>
+            {% if member.is_active %}
+              <span class="found" style="padding: 2px 8px; font-size: 13px;">Active</span>
+            {% else %}
+              <span class="message error" style="padding: 2px 8px; font-size: 13px; margin: 0;">Inactive</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if member.is_superuser %}
+              Superuser
+            {% elif member.is_staff %}
+              Staff / Admin
+            {% else %}
+              Cashier
+            {% endif %}
+          </td>
+          <td>
+            <a class="button" href="{% url 'settings_staff_update' member.pk %}">Edit</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="6">No staff accounts found.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

@@ -13,10 +13,13 @@
     <nav>
       {% if user.is_authenticated %}
         <a href="{% url 'pos' %}">POS</a>
-        <a href="{% url 'receive_stock' %}">Receive</a>
-        <a href="{% url 'product_list' %}">Products</a>
-        <a href="{% url 'reports' %}">Reports</a>
-        <a href="/admin/">Admin</a>
+        {% if user.is_staff %}
+          <a href="{% url 'receive_stock' %}">Receive</a>
+          <a href="{% url 'product_list' %}">Products</a>
+          <a href="{% url 'customer_list' %}">Customers</a>
+          <a href="{% url 'reports' %}">Reports</a>
+          <a href="{% url 'settings_dashboard' %}">Settings</a>
+        {% endif %}
         <span class="user">{{ user.get_username }}</span>
         <form class="logout" method="post" action="{% url 'logout' %}">
           {% csrf_token %}
@@ -27,15 +30,74 @@
       {% endif %}
     </nav>
   </header>
-  <main class="page">
+  <main class="page {% block page_class %}{% endblock %}">
     {% if messages %}
       <div class="messages">
         {% for message in messages %}
-          <div class="message {{ message.tags }}">{{ message }}</div>
+          <div class="message {{ message.tags }}">
+            <span>{{ message }}</span>
+            <button type="button" class="link-button" onclick="this.parentElement.remove()" style="margin-left: 10px; color: inherit; opacity: 0.6;">&times;</button>
+          </div>
         {% endfor %}
       </div>
     {% endif %}
     {% block content %}{% endblock %}
   </main>
+  
+  <script>
+    function playSound(type) {
+      if (localStorage.getItem("mute_audio") === "true") return;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        if (type === "error") {
+          osc.type = "sawtooth";
+          osc.frequency.setValueAtTime(150, ctx.currentTime);
+          gain.gain.setValueAtTime(0.08, ctx.currentTime);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.3);
+        } else {
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(800, ctx.currentTime);
+          gain.gain.setValueAtTime(0.05, ctx.currentTime);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.1);
+        }
+      } catch(e) {
+        console.warn("Audio context blocked or not supported:", e);
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const messages = document.querySelectorAll(".message");
+      let hasError = false;
+      let hasSuccess = false;
+      
+      messages.forEach(msg => {
+        if (msg.classList.contains("error") || msg.classList.contains("danger")) {
+          hasError = true;
+        } else {
+          hasSuccess = true;
+        }
+        
+        setTimeout(() => {
+          msg.style.transition = "opacity 0.5s ease, transform 0.5s ease";
+          msg.style.opacity = "0";
+          msg.style.transform = "translateX(120%)";
+          setTimeout(() => msg.remove(), 500);
+        }, 4000);
+      });
+
+      if (hasError) {
+        playSound("error");
+      } else if (hasSuccess) {
+        playSound("success");
+      }
+    });
+  </script>
 </body>
 </html>
