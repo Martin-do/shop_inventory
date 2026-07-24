@@ -16,7 +16,7 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-before-public-deploym
 DEBUG = _env_bool("DEBUG", True)
 ALLOWED_HOSTS = [
     host.strip()
-    for host in os.environ.get("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+    for host in os.environ.get("ALLOWED_HOSTS", "*").split(",")
     if host.strip()
 ]
 
