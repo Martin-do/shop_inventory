@@ -36,11 +36,9 @@
           </td>
           <td>
             {% if member.is_superuser %}
-              Superuser
-            {% elif member.is_staff %}
-              Staff / Admin
+              <strong>Superuser</strong>
             {% else %}
-              Cashier
+              {{ member.profile.get_role_display|default:member.role|capfirst }}
             {% endif %}
           </td>
           <td>

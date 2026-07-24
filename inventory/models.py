@@ -1,10 +1,42 @@
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
+
+
+class UserProfile(models.Model):
+    ROLE_CASHIER = "cashier"
+    ROLE_STOCK_CLERK = "stock_clerk"
+    ROLE_ADMIN = "admin"
+    ROLE_CHOICES = [
+        (ROLE_CASHIER, "Cashier (POS Only)"),
+        (ROLE_STOCK_CLERK, "Stock Clerk (Receive Stock & Products)"),
+        (ROLE_ADMIN, "Admin/Manager (Full Access)"),
+    ]
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_CASHIER)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.get_role_display()}"
+
+
+def get_user_role(user):
+    if not user or user.is_anonymous:
+        return ""
+    if user.is_superuser:
+        return UserProfile.ROLE_ADMIN
+    try:
+        return user.profile.role
+    except (UserProfile.DoesNotExist, AttributeError):
+        return UserProfile.ROLE_ADMIN if user.is_staff else UserProfile.ROLE_CASHIER
+
+
+User.role = property(get_user_role)
 
 
 class Category(models.Model):

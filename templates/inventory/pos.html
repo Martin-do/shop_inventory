@@ -2,17 +2,25 @@
 {% block title %}POS{% endblock %}
 {% block page_class %}page-pos{% endblock %}
 {% block content %}
+<div id="network-status-bar" style="padding: 8px 15px; background: #e6f7ff; border: 1px solid #91d5ff; border-radius: 6px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; font-size: 14px;">
+  <div>
+    <span id="network-indicator" style="font-weight: bold; color: var(--success);">🟢 Online</span>
+    <span id="sync-status-text" style="margin-left: 10px; color: var(--muted);">Catalog synced.</span>
+  </div>
+  <div style="display: flex; gap: 10px; align-items: center;">
+    <span id="pending-count-badge" style="display: none; background: #ff4d4f; color: white; padding: 2px 8px; border-radius: 10px; font-weight: bold; font-size: 12px;">0 Pending Sync</span>
+    <button type="button" id="btn-manual-sync" class="button" style="padding: 2px 8px; font-size: 12px; display: none;">🔄 Sync Now</button>
+  </div>
+</div>
+
 <section class="pos-layout">
   <div>
     <section class="heading">
       <h1>Checkout</h1>
-      <form method="post" action="{% url 'pos_clear' %}">
-        {% csrf_token %}
-        <button class="button danger">Clear Cart</button>
-      </form>
+      <button type="button" class="button danger" id="btn-clear-cart">Clear Cart</button>
     </section>
 
-    <form class="scan-box" method="post" action="{% url 'pos_add' %}" id="pos-add-form">
+    <form class="scan-box" id="pos-add-form" onsubmit="event.preventDefault(); handleScanAdd();">
       {% csrf_token %}
       <div style="position: relative; width: 100%;">
         <input id="barcode-input" name="barcode" placeholder="Scan barcode or type product name..." required autofocus autocomplete="off">
@@ -21,41 +29,14 @@
         </div>
       </div>
       <input name="quantity" id="pos-quantity-input" type="number" min="1" value="1" aria-label="Quantity" style="max-width: 90px;">
-      <button class="button primary">Add</button>
+      <button class="button primary" type="submit">Add</button>
     </form>
 
     <section class="panel">
       <table class="cart">
         <thead><tr><th>Image</th><th>Item</th><th style="text-align: center;">Qty</th><th>Total</th><th></th></tr></thead>
-        <tbody>
-          {% for line in lines %}
-            <tr style="font-size: 15px;">
-              <td style="width: 60px; vertical-align: middle;">
-                {% if line.product.image %}
-                  <img src="{{ line.product.image.url }}" alt="{{ line.product.name }}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line);">
-                {% else %}
-                  <div style="width: 50px; height: 50px; background: #eef2f0; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted); font-size: 22px; border: 1px solid var(--line);">📦</div>
-                {% endif %}
-              </td>
-              <td style="vertical-align: middle;">
-                <span style="font-size: 16px; font-weight: bold; color: var(--ink);">{{ line.product.name }}</span>
-                {% if line.product.variant %}
-                  <br><span style="font-size: 13px; font-weight: bold; color: var(--accent); background: #e8f3f1; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px;">{{ line.product.variant }}</span>
-                {% endif %}
-                <small style="margin-top: 4px; font-size: 11px;">{{ line.product.barcode }}</small>
-              </td>
-              <td style="font-size: 18px; font-weight: bold; vertical-align: middle; text-align: center;">{{ line.quantity }}</td>
-              <td style="font-size: 18px; font-weight: bold; color: var(--ink); vertical-align: middle;">₦{{ line.line_total|intcomma }}</td>
-              <td style="vertical-align: middle;">
-                <form method="post" action="{% url 'pos_remove' line.product.barcode %}">
-                  {% csrf_token %}
-                  <button class="link-button">Remove</button>
-                </form>
-              </td>
-            </tr>
-          {% empty %}
-            <tr><td colspan="5">Scan an item to begin.</td></tr>
-          {% endfor %}
+        <tbody id="cart-table-body">
+          <tr><td colspan="5">Scan an item to begin.</td></tr>
         </tbody>
       </table>
     </section>
@@ -70,7 +51,7 @@
     <div class="summary-breakdown" style="margin: 8px 0; border-top: 1px solid var(--line); padding-top: 10px; font-size: 15px;">
       <div style="display:flex; justify-content:space-between; margin-bottom:6px; align-items: center;">
         <span>Subtotal:</span>
-        <strong id="summary-subtotal" style="font-size: 16px; font-weight: bold; margin: 0; display: inline; font-family: monospace;">₦{{ total|intcomma }}</strong>
+        <strong id="summary-subtotal" style="font-size: 16px; font-weight: bold; margin: 0; display: inline; font-family: monospace;">₦0.00</strong>
       </div>
       <div style="display:flex; justify-content:space-between; margin-bottom:6px; color: var(--danger); align-items: center;">
         <span>Discount:</span>
@@ -82,11 +63,11 @@
       </div>
       <div style="display:flex; justify-content:space-between; border-top: 2px solid var(--ink); padding-top: 8px; font-size: 20px; align-items: center; margin-top: 6px;">
         <span style="font-weight: bold;">Total:</span>
-        <strong id="summary-total" style="font-size: 26px; font-weight: 800; margin: 0; display: inline; color: var(--accent); font-family: monospace;">₦{{ total|intcomma }}</strong>
+        <strong id="summary-total" style="font-size: 26px; font-weight: 800; margin: 0; display: inline; color: var(--accent); font-family: monospace;">₦0.00</strong>
       </div>
     </div>
 
-    <form method="post" action="{% url 'pos_checkout' %}" id="checkout-form" style="gap: 10px;">
+    <form id="checkout-form" style="gap: 10px;" onsubmit="event.preventDefault(); openCheckoutConfirmModal();">
       {% csrf_token %}
       <label style="font-size: 15px; font-weight: bold; gap: 4px;">Customer
         <select name="customer" id="id_customer" style="font-size: 15px; padding: 8px; min-height: 40px;">
@@ -108,10 +89,10 @@
       </div>
 
       <input type="hidden" name="tax_rate" id="id_tax_rate" value="{{ default_tax_rate }}">
-      <input type="hidden" name="cashier_name" value="{{ user.get_full_name|default:user.username }}">
+      <input type="hidden" name="cashier_name" id="id_cashier_name" value="{{ user.get_full_name|default:user.username }}">
 
       <label style="font-size: 15px; font-weight: bold; gap: 4px;">Amount Paid
-        <input name="amount_paid" id="id_amount_paid" type="text" inputmode="decimal" value="{{ total }}" style="font-size: 20px; padding: 10px; font-weight: bold; text-align: right; min-height: 44px;">
+        <input name="amount_paid" id="id_amount_paid" type="text" inputmode="decimal" value="0.00" style="font-size: 20px; padding: 10px; font-weight: bold; text-align: right; min-height: 44px;">
       </label>
 
       <div style="display:flex; justify-content:space-between; align-items: center; margin-top:8px; font-size: 18px; font-weight: bold; border-top: 1px dashed var(--line); padding-top: 10px; color: var(--success);">
@@ -119,7 +100,7 @@
         <span id="summary-change-due" style="font-size: 24px; font-family: monospace;">₦0.00</span>
       </div>
 
-      <button class="button primary wide" style="margin-top: 8px; font-size: 17px; padding: 12px; min-height: 46px;">Complete Sale</button>
+      <button class="button primary wide" style="margin-top: 8px; font-size: 17px; padding: 12px; min-height: 46px;" type="submit">Complete Sale</button>
     </form>
   </aside>
 </section>
@@ -129,7 +110,6 @@
   <div style="background: var(--panel); padding: 25px; border-radius: 12px; max-width: 480px; width: 90%; box-shadow: var(--shadow-lg); border: 1px solid var(--line);">
     <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 20px;">Confirm Transaction</h3>
     
-    <!-- Scrollable Cart Summary -->
     <div style="max-height: 150px; overflow-y: auto; margin-bottom: 15px; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fafafa;">
       <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: var(--ink);">
         <thead>
@@ -139,21 +119,16 @@
             <th style="text-align: right; padding-bottom: 5px; width: 90px;">Total</th>
           </tr>
         </thead>
-        <tbody>
-          {% for line in lines %}
-            <tr style="border-bottom: 1px dashed var(--line);">
-              <td style="padding: 6px 0;">
-                {{ line.product.name }}{% if line.product.variant %} ({{ line.product.variant }}){% endif %}
-              </td>
-              <td style="text-align: right; padding: 6px 0;">{{ line.quantity }}</td>
-              <td style="text-align: right; padding: 6px 0;">₦{{ line.line_total|intcomma }}</td>
-            </tr>
-          {% endfor %}
+        <tbody id="modal-cart-lines">
         </tbody>
       </table>
     </div>
 
     <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; font-size: 15px; border-bottom: 1px solid var(--line); padding-bottom: 15px;">
+      <div style="display: flex; justify-content: space-between;">
+        <span style="color: var(--muted);">Cashier:</span>
+        <strong id="modal-cashier-name">{{ user.get_full_name|default:user.username }}</strong>
+      </div>
       <div style="display: flex; justify-content: space-between;">
         <span style="color: var(--muted);">Customer:</span>
         <strong id="modal-customer">Guest Customer</strong>
@@ -185,54 +160,301 @@
     </div>
 
     <div style="display: flex; gap: 12px;">
-      <button type="button" id="btn-modal-confirm" class="button primary wide">Confirm & Print</button>
+      <button type="button" id="btn-modal-confirm" class="button primary wide">Confirm & Submit</button>
       <button type="button" id="btn-modal-cancel" class="button wide">Cancel</button>
     </div>
   </div>
 </div>
 
 <script>
-  // Keep barcode input focused
-  const input = document.getElementById("barcode-input");
-  window.addEventListener("click", (e) => {
-    // Prevent focus stealing when cashier is clicking form fields
-    if (e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT" && e.target.tagName !== "OPTION" && e.target.tagName !== "BUTTON" && e.target.tagName !== "A") {
-      input.focus();
+  // Register Service Worker for offline capability
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/static/inventory/sw.js')
+      .then(reg => console.log('Service Worker registered.'))
+      .catch(err => console.warn('Service Worker registration failed:', err));
+  }
+
+  // --- LOCAL STORAGE STATE MANAGEMENT ---
+  const STORAGE_KEY_CART = 'pos_active_cart';
+  const STORAGE_KEY_CATALOG = 'pos_product_catalog';
+  const STORAGE_KEY_PENDING = 'pos_pending_sales';
+
+  let localCart = JSON.parse(localStorage.getItem(STORAGE_KEY_CART) || '[]');
+  let productCatalog = JSON.parse(localStorage.getItem(STORAGE_KEY_CATALOG) || '[]');
+  let pendingSales = JSON.parse(localStorage.getItem(STORAGE_KEY_PENDING) || '[]');
+
+  function saveCartState() {
+    localStorage.setItem(STORAGE_KEY_CART, JSON.stringify(localCart));
+    renderCart();
+  }
+
+  function savePendingSalesState() {
+    localStorage.setItem(STORAGE_KEY_PENDING, JSON.stringify(pendingSales));
+    updateNetworkStatusUI();
+  }
+
+  function saveCatalogState() {
+    localStorage.setItem(STORAGE_KEY_CATALOG, JSON.stringify(productCatalog));
+  }
+
+  // --- CATALOG FETCH & SYNC ---
+  async function refreshCatalog() {
+    if (!navigator.onLine) return;
+    try {
+      const res = await fetch('/api/products/catalog/');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.products) {
+          productCatalog = data.products;
+          saveCatalogState();
+          document.getElementById("sync-status-text").innerText = `Catalog updated (${productCatalog.length} products).`;
+        }
+      }
+    } catch (e) {
+      console.warn("Could not refresh product catalog:", e);
     }
+  }
+
+  async function syncPendingSales() {
+    if (!navigator.onLine || pendingSales.length === 0) return;
+    document.getElementById("sync-status-text").innerText = `Syncing ${pendingSales.length} offline sales...`;
+
+    try {
+      const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+      const res = await fetch('/api/pos/sync-offline/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({ sales: pendingSales })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.synced && data.synced.length > 0) {
+          const syncedReceipts = new Set(data.synced.map(s => s.temp_receipt));
+          pendingSales = pendingSales.filter(s => !syncedReceipts.has(s.temp_receipt));
+          savePendingSalesState();
+          refreshCatalog();
+          if (typeof playSound === 'function') playSound('success');
+          alert(`Successfully synced ${data.synced.length} offline transactions to server!`);
+        }
+      }
+    } catch (e) {
+      console.warn("Sync failed:", e);
+      document.getElementById("sync-status-text").innerText = "Sync attempt failed. Will retry.";
+    }
+  }
+
+  function updateNetworkStatusUI() {
+    const isOnline = navigator.onLine;
+    const netIndicator = document.getElementById("network-indicator");
+    const badge = document.getElementById("pending-count-badge");
+    const btnSync = document.getElementById("btn-manual-sync");
+
+    if (isOnline) {
+      netIndicator.innerText = "🟢 Online";
+      netIndicator.style.color = "var(--success)";
+    } else {
+      netIndicator.innerText = "🔴 Offline";
+      netIndicator.style.color = "var(--danger)";
+      document.getElementById("sync-status-text").innerText = "Working offline. Transactions will sync automatically when online.";
+    }
+
+    if (pendingSales.length > 0) {
+      badge.style.display = "inline-block";
+      badge.innerText = `${pendingSales.length} Pending Sync`;
+      if (isOnline) {
+        btnSync.style.display = "inline-block";
+      } else {
+        btnSync.style.display = "none";
+      }
+    } else {
+      badge.style.display = "none";
+      btnSync.style.display = "none";
+      if (isOnline) {
+        document.getElementById("sync-status-text").innerText = "All sales synced.";
+      }
+    }
+  }
+
+  window.addEventListener('online', () => {
+    updateNetworkStatusUI();
+    syncPendingSales();
   });
-  window.addEventListener("load", () => input.focus());
+  window.addEventListener('offline', () => {
+    updateNetworkStatusUI();
+  });
 
-  // Mute setting logic
-  const muteBtn = document.getElementById("mute-toggle");
-  function updateMuteBtnText() {
-    const isMuted = localStorage.getItem("mute_audio") === "true";
-    muteBtn.innerText = isMuted ? "🔇 Mute On" : "🔊 Mute Off";
-  }
-  if (muteBtn) {
-    muteBtn.addEventListener("click", () => {
-      const isMuted = localStorage.getItem("mute_audio") === "true";
-      localStorage.setItem("mute_audio", !isMuted);
-      updateMuteBtnText();
+  document.getElementById("btn-manual-sync").addEventListener("click", syncPendingSales);
+
+  // --- CART RENDERING & OPERATIONS ---
+  const cartBody = document.getElementById("cart-table-body");
+  let userManuallySetAmountPaid = false;
+
+  function renderCart() {
+    cartBody.innerHTML = "";
+    if (localCart.length === 0) {
+      cartBody.innerHTML = '<tr><td colspan="5">Scan an item to begin.</td></tr>';
+      userManuallySetAmountPaid = false;
+      updateCheckoutSummary();
+      return;
+    }
+
+    let subtotal = 0;
+    localCart.forEach((item, index) => {
+      const lineTotal = item.price * item.quantity;
+      subtotal += lineTotal;
+
+      const tr = document.createElement("tr");
+      tr.style.fontSize = "15px";
+
+      tr.innerHTML = `
+        <td style="width: 60px; vertical-align: middle;">
+          ${item.image_url ? `<img src="${item.image_url}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line);">` : `<div style="width: 50px; height: 50px; background: #eef2f0; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted); font-size: 22px; border: 1px solid var(--line);">📦</div>`}
+        </td>
+        <td style="vertical-align: middle;">
+          <span style="font-size: 16px; font-weight: bold; color: var(--ink);">${item.name}</span>
+          ${item.variant ? `<br><span style="font-size: 13px; font-weight: bold; color: var(--accent); background: #e8f3f1; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px;">${item.variant}</span>` : ''}
+          <br><small style="margin-top: 4px; font-size: 11px;">${item.barcode}</small>
+        </td>
+        <td style="font-size: 18px; font-weight: bold; vertical-align: middle; text-align: center;">
+          <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <button type="button" class="button" style="padding: 2px 8px; font-size: 14px;" onclick="updateCartQty(${index}, -1)">-</button>
+            <span>${item.quantity}</span>
+            <button type="button" class="button" style="padding: 2px 8px; font-size: 14px;" onclick="updateCartQty(${index}, 1)">+</button>
+          </div>
+        </td>
+        <td style="font-size: 18px; font-weight: bold; color: var(--ink); vertical-align: middle;">₦${lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td style="vertical-align: middle;">
+          <button type="button" class="link-button" onclick="removeFromCart(${index})">Remove</button>
+        </td>
+      `;
+      cartBody.appendChild(tr);
     });
-    updateMuteBtnText();
+
+    updateCheckoutSummary();
   }
 
-  // Dynamic calculations logic
-  const subtotalVal = parseFloat("{{ total }}") || 0;
+  function updateCartQty(index, delta) {
+    if (index >= 0 && index < localCart.length) {
+      const item = localCart[index];
+      const newQty = item.quantity + delta;
+
+      if (newQty <= 0) {
+        removeFromCart(index);
+        return;
+      }
+
+      if (item.stock !== undefined && newQty > item.stock) {
+        alert(`Only ${item.stock} units of ${item.name} are in stock.`);
+        return;
+      }
+
+      item.quantity = newQty;
+      saveCartState();
+    }
+  }
+
+  function removeFromCart(index) {
+    if (index >= 0 && index < localCart.length) {
+      localCart.splice(index, 1);
+      saveCartState();
+    }
+  }
+
+  document.getElementById("btn-clear-cart").addEventListener("click", () => {
+    localCart = [];
+    saveCartState();
+  });
+
+  function handleScanAdd() {
+    const input = document.getElementById("barcode-input");
+    const qtyInput = document.getElementById("pos-quantity-input");
+    const barcode = input.value.trim();
+    const qty = parseInt(qtyInput.value) || 1;
+
+    if (!barcode) return;
+
+    // Lookup in local catalog first
+    let product = productCatalog.find(p => p.barcode === barcode);
+
+    if (!product) {
+      // Fallback: search backend if online
+      if (navigator.onLine) {
+        fetch(`/api/products/search/?q=${encodeURIComponent(barcode)}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.results && data.results.length > 0) {
+              const p = data.results[0];
+              addToCartFromObj(p, qty);
+              input.value = "";
+              qtyInput.value = "1";
+            } else {
+              alert("No active product found for this barcode.");
+            }
+          });
+        return;
+      } else {
+        alert("Product not found in local offline catalog.");
+        return;
+      }
+    }
+
+    addToCartFromObj(product, qty);
+    input.value = "";
+    qtyInput.value = "1";
+    document.getElementById("search-suggestions").style.display = "none";
+  }
+
+  function addToCartFromObj(product, qty) {
+    const existingIndex = localCart.findIndex(item => item.barcode === product.barcode);
+    const price = parseFloat(product.price);
+    const stock = product.stock !== undefined ? product.stock : 999;
+
+    if (existingIndex >= 0) {
+      const currentQty = localCart[existingIndex].quantity;
+      if (currentQty + qty > stock) {
+        alert(`Only ${stock} units of ${product.name} are in stock.`);
+        return;
+      }
+      localCart[existingIndex].quantity += qty;
+    } else {
+      if (qty > stock) {
+        alert(`Only ${stock} units of ${product.name} are in stock.`);
+        return;
+      }
+      localCart.push({
+        id: product.id,
+        barcode: product.barcode,
+        name: product.name,
+        variant: product.variant || "",
+        price: price,
+        quantity: qty,
+        stock: stock,
+        image_url: product.image_url || null
+      });
+    }
+
+    saveCartState();
+    if (typeof playSound === 'function') playSound('success');
+  }
+
+  // --- SUMMARY CALCULATIONS ---
   const discountInput = document.getElementById("id_discount_amount");
   const taxRateInput = document.getElementById("id_tax_rate");
   const amountPaidInput = document.getElementById("id_amount_paid");
 
+  const summarySubtotal = document.getElementById("summary-subtotal");
   const summaryDiscount = document.getElementById("summary-discount");
   const summaryTax = document.getElementById("summary-tax");
   const summaryTotal = document.getElementById("summary-total");
   const summaryChangeDue = document.getElementById("summary-change-due");
 
-  let userManuallySetAmountPaid = false;
   amountPaidInput.addEventListener("input", (e) => {
     let cursor = amountPaidInput.selectionStart;
     let oldLen = amountPaidInput.value.length;
-
     let cleanVal = amountPaidInput.value.replace(/[^\d.]/g, "");
     let parts = cleanVal.split(".");
     parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -250,14 +472,19 @@
     updateCheckoutSummary();
   });
 
+  function getCartSubtotal() {
+    return localCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  }
+
   function updateCheckoutSummary() {
+    const subtotal = getCartSubtotal();
     let discount = parseFloat(discountInput.value) || 0;
-    if (discount > subtotalVal) {
-      discount = subtotalVal;
-      discountInput.value = subtotalVal.toFixed(2);
+    if (discount > subtotal) {
+      discount = subtotal;
+      discountInput.value = subtotal.toFixed(2);
     }
     let taxRate = parseFloat(taxRateInput.value) || 0;
-    let taxableAmount = subtotalVal - discount;
+    let taxableAmount = Math.max(0, subtotal - discount);
     let taxAmount = taxableAmount * (taxRate / 100);
     let finalTotal = taxableAmount + taxAmount;
 
@@ -268,6 +495,7 @@
     let amountPaid = parseFloat(amountPaidInput.value.replace(/,/g, "")) || 0;
     let changeDue = amountPaid - finalTotal;
 
+    summarySubtotal.innerText = "₦" + subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     summaryDiscount.innerText = "-₦" + discount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     summaryTax.innerText = "₦" + taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     summaryTotal.innerText = "₦" + finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -291,71 +519,147 @@
       }
     });
   }
-  
-  // Run on load
-  updateCheckoutSummary();
 
-  // Modal Confirm Logic
-  const checkoutForm = document.getElementById("checkout-form");
+  // --- CHECKOUT CONFIRMATION & SALE EXECUTION ---
   const confirmModal = document.getElementById("checkout-confirm-modal");
   const btnModalConfirm = document.getElementById("btn-modal-confirm");
   const btnModalCancel = document.getElementById("btn-modal-cancel");
 
-  let isConfirmed = false;
-
-  checkoutForm.addEventListener("submit", (e) => {
-    if (!isConfirmed) {
-      e.preventDefault();
-      
-      const discount = parseFloat(discountInput.value) || 0;
-      const taxRate = parseFloat(taxRateInput.value) || 0;
-      const taxableAmount = subtotalVal - discount;
-      const taxAmount = taxableAmount * (taxRate / 100);
-      const finalTotal = taxableAmount + taxAmount;
-      const amountPaid = parseFloat(amountPaidInput.value.replace(/,/g, "")) || 0;
-      const changeDue = amountPaid - finalTotal;
-
-      if (amountPaid < finalTotal) {
-        alert("Amount paid is less than the sale total of " + finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-        return;
-      }
-
-      // Customer Info
-      const customerSelect = document.getElementById("id_customer");
-      const customerName = customerSelect.options[customerSelect.selectedIndex].text;
-      document.getElementById("modal-customer").innerText = customerName;
-
-      document.getElementById("modal-subtotal").innerText = "₦" + subtotalVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      document.getElementById("modal-discount").innerText = "-₦" + discount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      document.getElementById("modal-tax").innerText = "₦" + taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      document.getElementById("modal-total").innerText = "₦" + finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      document.getElementById("modal-paid").innerText = "₦" + amountPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      document.getElementById("modal-change").innerText = changeDue < 0 ? "₦0.00" : "₦" + changeDue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-      confirmModal.style.display = "flex";
+  function openCheckoutConfirmModal() {
+    if (localCart.length === 0) {
+      alert("Cart is empty.");
+      return;
     }
-  });
 
-  btnModalConfirm.addEventListener("click", () => {
-    isConfirmed = true;
-    amountPaidInput.value = amountPaidInput.value.replace(/,/g, "");
-    checkoutForm.submit();
-  });
+    const subtotal = getCartSubtotal();
+    const discount = parseFloat(discountInput.value) || 0;
+    const taxRate = parseFloat(taxRateInput.value) || 0;
+    const taxableAmount = Math.max(0, subtotal - discount);
+    const taxAmount = taxableAmount * (taxRate / 100);
+    const finalTotal = taxableAmount + taxAmount;
+    const amountPaid = parseFloat(amountPaidInput.value.replace(/,/g, "")) || 0;
+    const changeDue = amountPaid - finalTotal;
+
+    if (amountPaid < finalTotal) {
+      alert("Amount paid cannot be less than sale total of ₦" + finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+      return;
+    }
+
+    // Populate modal lines
+    const modalBody = document.getElementById("modal-cart-lines");
+    modalBody.innerHTML = "";
+    localCart.forEach(item => {
+      const lineTotal = item.price * item.quantity;
+      const tr = document.createElement("tr");
+      tr.style.borderBottom = "1px dashed var(--line)";
+      tr.innerHTML = `
+        <td style="padding: 6px 0;">${item.name} ${item.variant ? `(${item.variant})` : ''}</td>
+        <td style="text-align: right; padding: 6px 0;">${item.quantity}</td>
+        <td style="text-align: right; padding: 6px 0;">₦${lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+      `;
+      modalBody.appendChild(tr);
+    });
+
+    const customerSelect = document.getElementById("id_customer");
+    const customerName = customerSelect.options[customerSelect.selectedIndex]?.text || "Guest Customer";
+    
+    document.getElementById("modal-customer").innerText = customerName;
+    document.getElementById("modal-subtotal").innerText = "₦" + subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById("modal-discount").innerText = "-₦" + discount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById("modal-tax").innerText = "₦" + taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById("modal-total").innerText = "₦" + finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById("modal-paid").innerText = "₦" + amountPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById("modal-change").innerText = changeDue < 0 ? "₦0.00" : "₦" + changeDue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    confirmModal.style.display = "flex";
+  }
 
   btnModalCancel.addEventListener("click", () => {
     confirmModal.style.display = "none";
   });
 
-  // AJAX Product Autocomplete Search Logic
+  btnModalConfirm.addEventListener("click", async () => {
+    confirmModal.style.display = "none";
+
+    const subtotal = getCartSubtotal();
+    const discount = parseFloat(discountInput.value) || 0;
+    const taxRate = parseFloat(taxRateInput.value) || 0;
+    const amountPaid = parseFloat(amountPaidInput.value.replace(/,/g, "")) || 0;
+    const cashierName = document.getElementById("id_cashier_name").value || "{{ user.get_full_name|default:user.username }}";
+    const customerSelect = document.getElementById("id_customer");
+    const customerId = customerSelect.value ? parseInt(customerSelect.value) : null;
+
+    const tempReceipt = `OFFLINE-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+
+    const salePayload = {
+      temp_receipt: tempReceipt,
+      cashier_name: cashierName,
+      customer_id: customerId,
+      discount_amount: discount,
+      tax_rate: taxRate,
+      amount_paid: amountPaid,
+      items: localCart.map(item => ({
+        barcode: item.barcode,
+        quantity: item.quantity,
+        unit_price: item.price
+      }))
+    };
+
+    // Attempt direct online checkout sync
+    if (navigator.onLine) {
+      try {
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+        const res = await fetch('/api/pos/sync-offline/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+          },
+          body: JSON.stringify({ sales: [salePayload] })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.synced && data.synced.length > 0) {
+            const result = data.synced[0];
+            localCart = [];
+            saveCartState();
+            window.location.href = `/sales/${result.sale_id}/receipt/`;
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("Online checkout submission failed, queueing offline sale:", err);
+      }
+    }
+
+    // Queue Offline Sale locally
+    pendingSales.push(salePayload);
+    savePendingSalesState();
+
+    // Deduct stock in cached catalog locally
+    localCart.forEach(cartItem => {
+      const catItem = productCatalog.find(p => p.barcode === cartItem.barcode);
+      if (catItem && catItem.stock) {
+        catItem.stock = Math.max(0, catItem.stock - cartItem.quantity);
+      }
+    });
+    saveCatalogState();
+
+    localCart = [];
+    saveCartState();
+    if (typeof playSound === 'function') playSound('success');
+    alert(`Transaction recorded offline! (Temp Receipt: ${tempReceipt}). It will automatically sync to the server when connected.`);
+  });
+
+  // --- AUTOCOMPLETE SUGGESTIONS IN OFFLINE / ONLINE ---
   const barcodeInput = document.getElementById("barcode-input");
   const suggestionsDiv = document.getElementById("search-suggestions");
-  const addForm = document.getElementById("pos-add-form");
-
   let debounceTimeout = null;
 
   barcodeInput.addEventListener("input", () => {
     clearTimeout(debounceTimeout);
-    const query = barcodeInput.value.trim();
+    const query = barcodeInput.value.trim().toLowerCase();
 
     if (query.length < 2) {
       suggestionsDiv.style.display = "none";
@@ -363,81 +667,89 @@
     }
 
     debounceTimeout = setTimeout(() => {
-      fetch(`/api/products/search/?q=${encodeURIComponent(query)}`)
-        .then(res => res.json())
-        .then(data => {
-          suggestionsDiv.innerHTML = "";
-          if (!data.results || data.results.length === 0) {
-            suggestionsDiv.style.display = "none";
-            return;
-          }
-
-          data.results.forEach(product => {
-            const row = document.createElement("div");
-            row.style.padding = "12px 18px";
-            row.style.borderBottom = "1px solid var(--line)";
-            row.style.cursor = "pointer";
-            row.style.display = "flex";
-            row.style.justifyContent = "space-between";
-            row.style.alignItems = "center";
-            row.style.fontSize = "16px";
-            row.style.color = "var(--ink)";
-            
-            row.addEventListener("mouseover", () => {
-              row.style.background = "#e8f3f1";
-            });
-            row.addEventListener("mouseout", () => {
-              row.style.background = "none";
-            });
-
-            const leftCol = document.createElement("div");
-            leftCol.style.display = "flex";
-            leftCol.style.alignItems = "center";
-
-            const imgDiv = document.createElement("div");
-            imgDiv.style.marginRight = "14px";
-            imgDiv.style.flexShrink = "0";
-            if (product.image_url) {
-              imgDiv.innerHTML = `<img src="${product.image_url}" alt="${product.name}" style="width: 45px; height: 45px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line);">`;
-            } else {
-              imgDiv.innerHTML = `<div style="width: 45px; height: 45px; background: #eef2f0; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted); font-size: 20px; border: 1px solid var(--line);">📦</div>`;
-            }
-            leftCol.appendChild(imgDiv);
-
-            const infoCol = document.createElement("div");
-            infoCol.innerHTML = `<span style="font-size:18px; font-weight:bold;">${product.name}</span> ${product.variant ? `<span style="font-size:13px; font-weight:bold; color:var(--accent); background:#e8f3f1; padding:2px 6px; border-radius:4px; margin-left:6px; display:inline-block; vertical-align:middle;">${product.variant}</span>` : ''}<br><small style="color: var(--muted); font-size:13.5px; margin-top:4px; display:inline-block;">Barcode: ${product.barcode} | Price: ₦${parseFloat(product.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Stock: ${product.stock}</small>`;
-            leftCol.appendChild(infoCol);
-
-            const selectBtn = document.createElement("button");
-            selectBtn.type = "button";
-            selectBtn.className = "button primary";
-            selectBtn.style.padding = "6px 12px";
-            selectBtn.style.fontSize = "13px";
-            selectBtn.style.minHeight = "auto";
-            selectBtn.innerText = "Select";
-
-            row.appendChild(leftCol);
-            row.appendChild(selectBtn);
-
-            row.addEventListener("click", () => {
-              barcodeInput.value = product.barcode;
-              suggestionsDiv.style.display = "none";
-              addForm.submit();
-            });
-
-            suggestionsDiv.appendChild(row);
-          });
-
-          suggestionsDiv.style.display = "block";
-        });
-    }, 200); // 200ms debounce
+      let matches = productCatalog.filter(p => p.name.toLowerCase().includes(query) || p.barcode.includes(query)).slice(0, 10);
+      
+      if (matches.length === 0 && navigator.onLine) {
+        // Fallback search API
+        fetch(`/api/products/search/?q=${encodeURIComponent(query)}`)
+          .then(res => res.json())
+          .then(data => renderSuggestions(data.results || []));
+      } else {
+        renderSuggestions(matches);
+      }
+    }, 150);
   });
 
-  // Close suggestions when clicking outside
-  document.addEventListener("click", (e) => {
-    if (!barcodeInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
+  function renderSuggestions(results) {
+    suggestionsDiv.innerHTML = "";
+    if (!results || results.length === 0) {
       suggestionsDiv.style.display = "none";
+      return;
     }
+
+    results.forEach(product => {
+      const row = document.createElement("div");
+      row.style.padding = "10px 14px";
+      row.style.borderBottom = "1px solid var(--line)";
+      row.style.cursor = "pointer";
+      row.style.display = "flex";
+      row.style.justifyContent = "space-between";
+      row.style.alignItems = "center";
+      row.style.fontSize = "15px";
+
+      row.addEventListener("mouseover", () => row.style.background = "#e8f3f1");
+      row.addEventListener("mouseout", () => row.style.background = "none");
+
+      row.innerHTML = `
+        <div>
+          <span style="font-weight:bold;">${product.name}</span> ${product.variant ? `<span style="font-size:12px; font-weight:bold; color:var(--accent); background:#e8f3f1; padding:2px 6px; border-radius:4px;">${product.variant}</span>` : ''}
+          <br><small style="color:var(--muted); font-size:12px;">Barcode: ${product.barcode} | Price: ₦${parseFloat(product.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Stock: ${product.stock}</small>
+        </div>
+        <button type="button" class="button primary" style="padding: 4px 10px; font-size: 12px;">Select</button>
+      `;
+
+      row.addEventListener("click", () => {
+        const qty = parseInt(document.getElementById("pos-quantity-input").value) || 1;
+        addToCartFromObj(product, qty);
+        barcodeInput.value = "";
+        suggestionsDiv.style.display = "none";
+      });
+
+      suggestionsDiv.appendChild(row);
+    });
+
+    suggestionsDiv.style.display = "block";
+  }
+
+  // Focus trap workaround for scanner
+  window.addEventListener("click", (e) => {
+    if (!["INPUT", "SELECT", "OPTION", "BUTTON", "A"].includes(e.target.tagName)) {
+      barcodeInput.focus();
+    }
+  });
+
+  // Mute setting logic
+  const muteBtn = document.getElementById("mute-toggle");
+  function updateMuteBtnText() {
+    const isMuted = localStorage.getItem("mute_audio") === "true";
+    if (muteBtn) muteBtn.innerText = isMuted ? "🔇 Mute On" : "🔊 Mute Off";
+  }
+  if (muteBtn) {
+    muteBtn.addEventListener("click", () => {
+      const isMuted = localStorage.getItem("mute_audio") === "true";
+      localStorage.setItem("mute_audio", !isMuted);
+      updateMuteBtnText();
+    });
+    updateMuteBtnText();
+  }
+
+  // Initialize on load
+  document.addEventListener("DOMContentLoaded", () => {
+    refreshCatalog();
+    renderCart();
+    updateNetworkStatusUI();
+    syncPendingSales();
   });
 </script>
 {% endblock %}
+

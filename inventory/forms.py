@@ -3,11 +3,18 @@ from decimal import Decimal
 from django import forms
 from django.contrib.auth.models import User
 
-from .models import Category, Product, Customer, StoreSettings
+from .models import Category, Product, Customer, StoreSettings, UserProfile, StockMovement
 
 
 class ProductForm(forms.ModelForm):
     opening_stock = forms.IntegerField(min_value=0, initial=0, required=False)
+    total_stock = forms.IntegerField(min_value=0, required=False, label="Total Available Stock")
+    adjustment_note = forms.CharField(
+        max_length=240,
+        required=False,
+        help_text="Optional reason if adjusting total stock.",
+        widget=forms.TextInput(attrs={"placeholder": "e.g. Audit correction, spoiled goods"}),
+    )
     new_category = forms.CharField(
         max_length=120,
         required=False,
@@ -34,10 +41,14 @@ class ProductForm(forms.ModelForm):
         if self.instance.pk:
             # Editing an existing product: opening stock only applies on create.
             self.fields.pop("opening_stock")
+            self.fields["total_stock"].initial = self.instance.stock_on_hand
+            self.order_fields(["name", "variant", "barcode", "category", "new_category", "cost_price", "selling_price", "total_stock", "adjustment_note", "reorder_level", "image", "is_active"])
         else:
             # Creating: new products are active by default; no toggle needed yet.
             self.fields.pop("is_active")
-        self.order_fields(["name", "variant", "barcode", "category", "new_category", "cost_price", "selling_price", "reorder_level", "image", "opening_stock"])
+            self.fields.pop("total_stock")
+            self.fields.pop("adjustment_note")
+            self.order_fields(["name", "variant", "barcode", "category", "new_category", "cost_price", "selling_price", "reorder_level", "image", "opening_stock"])
 
     def clean_new_category(self):
         return self.cleaned_data.get("new_category", "").strip()
@@ -47,7 +58,27 @@ class ProductForm(forms.ModelForm):
         if new_category:
             category, _ = Category.objects.get_or_create(name=new_category)
             self.instance.category = category
-        return super().save(commit=commit)
+        
+        is_edit = bool(self.instance.pk)
+        old_stock = self.instance.stock_on_hand if is_edit else 0
+        
+        product = super().save(commit=commit)
+        
+        if is_edit and commit and "total_stock" in self.cleaned_data:
+            new_stock = self.cleaned_data.get("total_stock")
+            if new_stock is not None and new_stock != old_stock:
+                delta = new_stock - old_stock
+                adj_note = self.cleaned_data.get("adjustment_note", "").strip()
+                note = f"Manual adjustment: {old_stock} → {new_stock}"
+                if adj_note:
+                    note += f" ({adj_note})"
+                StockMovement.objects.create(
+                    product=product,
+                    movement_type=StockMovement.ADJUSTMENT,
+                    quantity=delta,
+                    note=note,
+                )
+        return product
 
     def clean_barcode(self):
         return self.cleaned_data["barcode"].strip()
@@ -70,12 +101,36 @@ class ReceiveStockForm(forms.Form):
         required=False,
         widget=forms.TextInput(attrs={"placeholder": "Supplier, invoice, or reason"}),
     )
+    # Fields for creating a new product on-the-fly if barcode doesn't exist
+    is_new_product = forms.BooleanField(required=False, widget=forms.HiddenInput())
+    name = forms.CharField(max_length=180, required=False)
+    variant = forms.CharField(max_length=80, required=False, widget=forms.TextInput(attrs={"placeholder": "e.g. 1L, 500ml"}))
+    category = forms.ModelChoiceField(queryset=Category.objects.all(), required=False, empty_label="— Select a category —")
+    new_category = forms.CharField(max_length=120, required=False, widget=forms.TextInput(attrs={"placeholder": "Or new category"}))
+    cost_price = forms.DecimalField(min_value=Decimal("0.00"), decimal_places=2, max_digits=12, required=False, initial=Decimal("0.00"))
+    selling_price = forms.DecimalField(min_value=Decimal("0.00"), decimal_places=2, max_digits=12, required=False)
+    reorder_level = forms.IntegerField(min_value=0, initial=5, required=False)
 
     def clean_barcode(self):
-        barcode = self.cleaned_data["barcode"].strip()
-        if not Product.objects.filter(barcode=barcode, is_active=True).exists():
-            raise forms.ValidationError("No active product was found for this barcode.")
-        return barcode
+        return self.cleaned_data["barcode"].strip()
+
+    def clean(self):
+        cleaned_data = super().clean()
+        barcode = cleaned_data.get("barcode")
+        if not barcode:
+            return cleaned_data
+
+        product_exists = Product.objects.filter(barcode=barcode, is_active=True).exists()
+        if not product_exists:
+            cleaned_data["is_new_product"] = True
+            name = cleaned_data.get("name", "").strip()
+            selling_price = cleaned_data.get("selling_price")
+
+            if not name or selling_price is None:
+                raise forms.ValidationError(
+                    f"Barcode '{barcode}' is not in database. Fill in the product details below to create and receive it."
+                )
+        return cleaned_data
 
     def clean_note(self):
         return self.cleaned_data.get("note", "").strip()
@@ -167,6 +222,11 @@ class CategoryForm(forms.ModelForm):
 
 class StaffForm(forms.ModelForm):
     password = forms.CharField(widget=forms.PasswordInput(), required=False, help_text="Leave blank to keep current password.")
+    role = forms.ChoiceField(
+        choices=UserProfile.ROLE_CHOICES,
+        initial=UserProfile.ROLE_CASHIER,
+        help_text="Role determines access permissions in the app.",
+    )
 
     class Meta:
         model = User
@@ -174,15 +234,29 @@ class StaffForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if not self.instance.pk:
+        if self.instance.pk:
+            try:
+                self.fields["role"].initial = self.instance.profile.role
+            except Exception:
+                self.fields["role"].initial = UserProfile.ROLE_ADMIN if self.instance.is_staff else UserProfile.ROLE_CASHIER
+        else:
             self.fields["password"].required = True
             self.fields["password"].help_text = "Required for new staff."
 
     def save(self, commit=True):
         user = super().save(commit=False)
         password = self.cleaned_data.get("password")
+        role = self.cleaned_data.get("role", UserProfile.ROLE_CASHIER)
+        
+        # Admin or Stock Clerk users get is_staff = True for access to management routes
+        user.is_staff = (role in [UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
+        
         if password:
             user.set_password(password)
         if commit:
             user.save()
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.role = role
+            profile.save()
         return user
+

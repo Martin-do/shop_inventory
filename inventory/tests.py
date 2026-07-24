@@ -1,11 +1,12 @@
+import json
 from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from .forms import ProductForm
-from .models import Category, Product, Sale, SaleItem, StockMovement
+from .forms import ProductForm, ReceiveStockForm
+from .models import Category, Product, Sale, SaleItem, StockMovement, UserProfile
 
 
 def make_product(barcode="1001", selling_price="10.00", reorder_level=5, stock=0):
@@ -334,3 +335,118 @@ class BackupTests(TestCase):
         last_log = BackupLog.objects.first()
         self.assertEqual(last_log.status, "success")
         self.assertTrue(last_log.file_name.startswith("backup_"))
+
+
+class RoleAndOfflineTests(TestCase):
+    def setUp(self):
+        from .models import UserProfile
+        self.admin = User.objects.create_superuser(username="admin_user", email="admin@test.com", password="pw")
+        
+        self.cashier = User.objects.create_user(username="cashier_user", password="pw")
+        UserProfile.objects.create(user=self.cashier, role=UserProfile.ROLE_CASHIER)
+
+        self.stock_clerk = User.objects.create_user(username="stock_clerk_user", password="pw", is_staff=True)
+        UserProfile.objects.create(user=self.stock_clerk, role=UserProfile.ROLE_STOCK_CLERK)
+
+        self.product = make_product(barcode="7001", selling_price="25.00", stock=10)
+
+    def test_role_access_permissions(self):
+        # Cashier
+        self.client.login(username="cashier_user", password="pw")
+        self.assertEqual(self.client.get(reverse("pos")).status_code, 200)
+        self.assertRedirects(self.client.get(reverse("dashboard")), reverse("pos"))
+        self.assertRedirects(self.client.get(reverse("reports")), reverse("pos"))
+
+        # Stock Clerk
+        self.client.login(username="stock_clerk_user", password="pw")
+        self.assertEqual(self.client.get(reverse("receive_stock")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("product_list")).status_code, 200)
+        self.assertRedirects(self.client.get(reverse("pos")), reverse("receive_stock"))
+        self.assertRedirects(self.client.get(reverse("dashboard")), reverse("receive_stock"))
+
+        # Admin
+        self.client.login(username="admin_user", password="pw")
+        self.assertEqual(self.client.get(reverse("dashboard")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("pos")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("reports")).status_code, 200)
+
+    def test_edit_product_stock_adjustment(self):
+        self.client.login(username="admin_user", password="pw")
+        form = ProductForm(
+            data={
+                "name": self.product.name,
+                "barcode": self.product.barcode,
+                "selling_price": "25.00",
+                "reorder_level": 5,
+                "total_stock": 25,
+                "adjustment_note": "Audit correction",
+                "is_active": True,
+            },
+            instance=self.product,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+        self.assertEqual(self.product.stock_on_hand, 25)
+
+        movement = StockMovement.objects.filter(movement_type=StockMovement.ADJUSTMENT).first()
+        self.assertIsNotNone(movement)
+        self.assertEqual(movement.quantity, 15)
+        self.assertIn("Audit correction", movement.note)
+
+    def test_receive_stock_on_the_fly_creation(self):
+        self.client.login(username="stock_clerk_user", password="pw")
+        response = self.client.post(reverse("receive_stock"), {
+            "barcode": "9999",
+            "quantity": 20,
+            "name": "Fresh Orange Juice",
+            "selling_price": "15.00",
+            "cost_price": "10.00",
+            "reorder_level": 5,
+            "note": "Initial delivery",
+        })
+        self.assertRedirects(response, reverse("receive_stock"))
+        
+        new_prod = Product.objects.get(barcode="9999")
+        self.assertEqual(new_prod.name, "Fresh Orange Juice")
+        self.assertEqual(new_prod.stock_on_hand, 20)
+
+    def test_api_active_catalog(self):
+        self.client.login(username="cashier_user", password="pw")
+        response = self.client.get(reverse("api_active_catalog"))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("products", data)
+        self.assertTrue(any(p["barcode"] == "7001" for p in data["products"]))
+
+    def test_api_sync_offline_sales(self):
+        self.client.login(username="cashier_user", password="pw")
+        payload = {
+            "sales": [
+                {
+                    "temp_receipt": "OFFLINE-101",
+                    "cashier_name": "cashier_user",
+                    "discount_amount": "2.00",
+                    "tax_rate": "0.00",
+                    "amount_paid": "50.00",
+                    "items": [
+                        {"barcode": "7001", "quantity": 2, "unit_price": "25.00"}
+                    ]
+                }
+            ]
+        }
+        response = self.client.post(
+            reverse("api_sync_offline"),
+            data=json.dumps(payload),
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200)
+        res_data = response.json()
+        self.assertEqual(len(res_data["synced"]), 1)
+        self.assertEqual(res_data["synced"][0]["temp_receipt"], "OFFLINE-101")
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_on_hand, 8)
+        sale = Sale.objects.get(pk=res_data["synced"][0]["sale_id"])
+        self.assertEqual(sale.cashier_name, "cashier_user")
+        self.assertEqual(sale.total, Decimal("48.00"))
+

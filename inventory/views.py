@@ -1,4 +1,6 @@
+from functools import wraps
 import csv
+import json
 from decimal import Decimal
 
 from django.contrib import messages
@@ -14,7 +16,30 @@ from .forms import (
     AddToCartForm, CheckoutForm, ProductForm, ReceiveStockForm,
     StoreSettingsForm, CustomerForm, CategoryForm, StaffForm
 )
-from .models import Product, Sale, SaleItem, StockMovement, Customer, StoreSettings, Category, BackupLog
+from .models import Product, Sale, SaleItem, StockMovement, Customer, StoreSettings, Category, BackupLog, UserProfile
+
+
+from django.contrib.auth.views import redirect_to_login
+
+
+def role_required(allowed_roles):
+    """Decorator to enforce role-based permissions (admin, stock_clerk, cashier)."""
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(request, *args, **kwargs):
+            if not request.user.is_authenticated:
+                return redirect_to_login(request.get_full_path())
+            role = getattr(request.user, "role", UserProfile.ROLE_CASHIER)
+            if role in allowed_roles:
+                return view_func(request, *args, **kwargs)
+            messages.error(request, "Access denied. You do not have permission to view that page.")
+            if role == UserProfile.ROLE_CASHIER:
+                return redirect("pos")
+            elif role == UserProfile.ROLE_STOCK_CLERK:
+                return redirect("receive_stock")
+            return redirect("dashboard")
+        return _wrapped_view
+    return decorator
 
 
 def _cart(request):
@@ -38,10 +63,8 @@ def _cart_lines(cart):
     return lines, total
 
 
-@login_required
+@role_required([UserProfile.ROLE_ADMIN])
 def dashboard(request):
-    if not request.user.is_staff:
-        return redirect("pos")
     products = list(Product.objects.with_stock())
     stock_values = [
         product.stock_on_hand * product.selling_price
@@ -57,7 +80,7 @@ def dashboard(request):
     return render(request, "inventory/dashboard.html", context)
 
 
-@login_required
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
 def product_list(request):
     query = request.GET.get("q", "").strip()
     products = Product.objects.select_related("category").with_stock()
@@ -66,8 +89,7 @@ def product_list(request):
     return render(request, "inventory/product_list.html", {"products": products, "query": query})
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
 def product_create(request):
     form = ProductForm(request.POST or None, request.FILES or None)
     if request.method == "POST" and form.is_valid():
@@ -80,25 +102,23 @@ def product_create(request):
                 quantity=opening_stock,
                 note="Opening stock",
             )
-        messages.success(request, "Product created.")
+        messages.success(request, f"Product '{product.name}' created.")
         return redirect("product_list")
     return render(request, "inventory/product_form.html", {"form": form, "title": "Add Product"})
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
 def product_update(request, pk):
     product = get_object_or_404(Product, pk=pk)
     form = ProductForm(request.POST or None, request.FILES or None, instance=product)
     if request.method == "POST" and form.is_valid():
         form.save()
-        messages.success(request, "Product updated.")
+        messages.success(request, f"Product '{product.name}' updated.")
         return redirect("product_list")
-    return render(request, "inventory/product_form.html", {"form": form, "title": "Edit Product"})
+    return render(request, "inventory/product_form.html", {"form": form, "title": f"Edit Product: {product.name}"})
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
 @require_POST
 def product_toggle_active(request, pk):
     product = get_object_or_404(Product, pk=pk)
@@ -109,34 +129,65 @@ def product_toggle_active(request, pk):
     return redirect("product_list")
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
 def receive_stock(request):
     product = None
     form = ReceiveStockForm()
+    is_new_unregistered = False
+
     if request.method == "POST":
         form = ReceiveStockForm(request.POST)
-        if not form.is_valid():
-            return render(request, "inventory/receive_stock.html", {"form": form, "product": product})
-        barcode = form.cleaned_data["barcode"]
-        quantity = form.cleaned_data["quantity"]
-        product = get_object_or_404(Product, barcode=barcode, is_active=True)
-        StockMovement.objects.create(
-            product=product,
-            movement_type=StockMovement.RECEIVE,
-            quantity=quantity,
-            note=form.cleaned_data["note"],
-        )
-        messages.success(request, f"Added {quantity} units to {product.name}.")
-        return redirect("receive_stock")
+        if form.is_valid():
+            barcode = form.cleaned_data["barcode"]
+            quantity = form.cleaned_data["quantity"]
+            note = form.cleaned_data.get("note", "")
+
+            product = Product.objects.filter(barcode=barcode, is_active=True).first()
+            if not product:
+                cat = form.cleaned_data.get("category")
+                new_cat_name = form.cleaned_data.get("new_category", "").strip()
+                if new_cat_name:
+                    cat, _ = Category.objects.get_or_create(name=new_cat_name)
+
+                product = Product.objects.create(
+                    barcode=barcode,
+                    name=form.cleaned_data["name"].strip(),
+                    variant=form.cleaned_data.get("variant", "").strip(),
+                    category=cat,
+                    cost_price=form.cleaned_data.get("cost_price") or Decimal("0.00"),
+                    selling_price=form.cleaned_data["selling_price"],
+                    reorder_level=form.cleaned_data.get("reorder_level") or 5,
+                )
+                messages.success(request, f"New product '{product.name}' created.")
+
+            StockMovement.objects.create(
+                product=product,
+                movement_type=StockMovement.RECEIVE,
+                quantity=quantity,
+                note=note or "Stock received",
+            )
+            messages.success(request, f"Added {quantity} units to {product.name}.")
+            return redirect("receive_stock")
+        else:
+            barcode = request.POST.get("barcode", "").strip()
+            if barcode and not Product.objects.filter(barcode=barcode, is_active=True).exists():
+                is_new_unregistered = True
+
     barcode = request.GET.get("barcode", "").strip()
     if barcode:
         product = Product.objects.filter(barcode=barcode, is_active=True).first()
+        if not product:
+            is_new_unregistered = True
         form = ReceiveStockForm(initial={"barcode": barcode, "quantity": 1})
-    return render(request, "inventory/receive_stock.html", {"form": form, "product": product})
+
+    return render(
+        request,
+        "inventory/receive_stock.html",
+        {"form": form, "product": product, "is_new_unregistered": is_new_unregistered},
+    )
 
 
-@login_required
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
 def pos(request):
     lines, total = _cart_lines(_cart(request))
     settings = StoreSettings.get_solo()
@@ -161,7 +212,7 @@ def pos(request):
     return render(request, "inventory/pos.html", context)
 
 
-@login_required
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
 @require_POST
 def pos_add(request):
     form = AddToCartForm(request.POST)
@@ -181,7 +232,7 @@ def pos_add(request):
     return redirect("pos")
 
 
-@login_required
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
 @require_POST
 def pos_remove(request, barcode):
     cart = _cart(request)
@@ -191,14 +242,14 @@ def pos_remove(request, barcode):
     return redirect("pos")
 
 
-@login_required
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
 @require_POST
 def pos_clear(request):
     request.session["cart"] = {}
     return redirect("pos")
 
 
-@login_required
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
 @require_POST
 @transaction.atomic
 def pos_checkout(request):
@@ -212,10 +263,6 @@ def pos_checkout(request):
         messages.error(request, "; ".join(error for errors in form.errors.values() for error in errors))
         return redirect("pos")
 
-    # Lock the products in the cart so concurrent checkouts can't oversell the
-    # same stock between the availability check and the ledger writes. The lock
-    # is taken on the plain product rows (no aggregation, which some databases
-    # reject with FOR UPDATE); stock is recomputed from the movement ledger.
     barcodes = [line["product"].barcode for line in lines]
     locked = Product.objects.select_for_update().in_bulk(barcodes, field_name="barcode")
 
@@ -247,7 +294,7 @@ def pos_checkout(request):
         return redirect("pos")
 
     sale = Sale.objects.create(
-        cashier_name=form.cleaned_data["cashier_name"],
+        cashier_name=form.cleaned_data["cashier_name"] or request.user.get_full_name() or request.user.username,
         customer=customer,
         total=final_total,
         amount_paid=amount_paid,
@@ -276,14 +323,13 @@ def pos_checkout(request):
     return redirect("sale_receipt", sale_id=sale.pk)
 
 
-@login_required
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
 def sale_detail(request, sale_id):
     sale = get_object_or_404(Sale.objects.prefetch_related("items__product"), pk=sale_id)
     return render(request, "inventory/sale_detail.html", {"sale": sale})
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN])
 def reports(request):
     context = {
         "sales_total": Sale.objects.aggregate(total=Sum("total"))["total"] or Decimal("0.00"),
@@ -298,8 +344,7 @@ def reports(request):
     return render(request, "inventory/reports.html", context)
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN])
 def export_products_csv(request):
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = 'attachment; filename="products.csv"'
@@ -318,8 +363,7 @@ def export_products_csv(request):
     return response
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN])
 def export_sales_csv(request):
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = 'attachment; filename="sales.csv"'
@@ -330,8 +374,7 @@ def export_sales_csv(request):
     return response
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN])
 def settings_dashboard(request):
     settings = StoreSettings.get_solo()
     form = StoreSettingsForm(request.POST or None, request.FILES or None, instance=settings)
@@ -348,8 +391,7 @@ def settings_dashboard(request):
     })
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN])
 def trigger_manual_backup(request):
     from .backup_utils import run_backup_job
     success, message = run_backup_job()
@@ -360,15 +402,13 @@ def trigger_manual_backup(request):
     return redirect("settings_dashboard")
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN])
 def settings_staff_list(request):
-    staff_members = User.objects.all().order_by("-is_staff", "username")
+    staff_members = User.objects.all().select_related("profile").order_by("-is_staff", "username")
     return render(request, "inventory/settings_staff_list.html", {"staff_members": staff_members})
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN])
 def settings_staff_create(request):
     form = StaffForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -378,8 +418,7 @@ def settings_staff_create(request):
     return render(request, "inventory/settings_staff_form.html", {"form": form, "title": "Create Staff Account"})
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN])
 def settings_staff_update(request, pk):
     user = get_object_or_404(User, pk=pk)
     form = StaffForm(request.POST or None, instance=user)
@@ -390,8 +429,7 @@ def settings_staff_update(request, pk):
     return render(request, "inventory/settings_staff_form.html", {"form": form, "title": f"Edit Staff Account: {user.username}"})
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
 def settings_category_list(request):
     categories = Category.objects.all().annotate(product_count=Count("product"))
     form = CategoryForm(request.POST or None)
@@ -402,8 +440,7 @@ def settings_category_list(request):
     return render(request, "inventory/settings_category_list.html", {"categories": categories, "form": form})
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
 def settings_category_update(request, pk):
     category = get_object_or_404(Category, pk=pk)
     form = CategoryForm(request.POST or None, instance=category)
@@ -414,8 +451,7 @@ def settings_category_update(request, pk):
     return render(request, "inventory/settings_category_form.html", {"form": form, "category": category})
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
 @require_POST
 def settings_category_delete(request, pk):
     category = get_object_or_404(Category, pk=pk)
@@ -427,8 +463,7 @@ def settings_category_delete(request, pk):
     return redirect("settings_category_list")
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
 def customer_list(request):
     query = request.GET.get("q", "").strip()
     customers = Customer.objects.all()
@@ -437,8 +472,7 @@ def customer_list(request):
     return render(request, "inventory/customer_list.html", {"customers": customers, "query": query})
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
 def customer_create(request):
     form = CustomerForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -448,8 +482,7 @@ def customer_create(request):
     return render(request, "inventory/customer_form.html", {"form": form, "title": "Add Customer"})
 
 
-@login_required
-@user_passes_test(lambda u: u.is_staff)
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
 def customer_update(request, pk):
     customer = get_object_or_404(Customer, pk=pk)
     form = CustomerForm(request.POST or None, instance=customer)
@@ -460,7 +493,7 @@ def customer_update(request, pk):
     return render(request, "inventory/customer_form.html", {"form": form, "title": "Edit Customer"})
 
 
-@login_required
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
 def sale_receipt(request, sale_id):
     sale = get_object_or_404(Sale.objects.prefetch_related("items__product"), pk=sale_id)
     settings = StoreSettings.get_solo()
@@ -472,7 +505,7 @@ def sale_receipt(request, sale_id):
     })
 
 
-@login_required
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
 @require_POST
 @transaction.atomic
 def sale_revert(request, sale_id):
@@ -481,7 +514,6 @@ def sale_revert(request, sale_id):
         messages.error(request, f"Sale #{sale.pk} has already been reverted.")
         return redirect("sale_receipt", sale_id=sale.pk)
     
-    # Return stock to inventory by creating positive RETURN movement
     for item in sale.items.all():
         StockMovement.objects.create(
             product=item.product,
@@ -517,3 +549,114 @@ def api_product_search(request):
             "image_url": p.image.url if p.image else None,
         })
     return JsonResponse({"results": results})
+
+
+@login_required
+def api_active_catalog(request):
+    """Endpoint for POS to download full active product catalog for offline caching."""
+    products = Product.objects.filter(is_active=True).with_stock()
+    results = []
+    for p in products:
+        results.append({
+            "id": p.id,
+            "name": p.name,
+            "barcode": p.barcode,
+            "variant": p.variant or "",
+            "price": float(p.selling_price),
+            "stock": p.stock_on_hand,
+            "image_url": p.image.url if p.image else None,
+            "category": p.category.name if p.category else "",
+        })
+    return JsonResponse({"products": results})
+
+
+@login_required
+@require_POST
+def api_sync_offline(request):
+    """Sync sales completed offline by cashiers when connection is restored."""
+    try:
+        data = json.loads(request.body)
+    except Exception as e:
+        return JsonResponse({"error": f"Invalid JSON payload: {str(e)}"}, status=400)
+
+    sales_payload = data.get("sales", [])
+    synced = []
+    errors = []
+
+    for sale_data in sales_payload:
+        temp_receipt = sale_data.get("temp_receipt", "")
+        items_data = sale_data.get("items", [])
+        if not items_data:
+            continue
+
+        try:
+            with transaction.atomic():
+                lines = []
+                subtotal = Decimal("0.00")
+
+                for item in items_data:
+                    barcode = item.get("barcode")
+                    qty = int(item.get("quantity", 1))
+                    product = Product.objects.select_for_update().filter(barcode=barcode, is_active=True).first()
+                    if not product:
+                        raise ValueError(f"Product with barcode '{barcode}' not found or inactive.")
+
+                    unit_price = Decimal(str(item.get("unit_price", product.selling_price)))
+                    line_total = unit_price * qty
+                    subtotal += line_total
+                    lines.append({
+                        "product": product,
+                        "quantity": qty,
+                        "unit_price": unit_price,
+                        "line_total": line_total,
+                    })
+
+                discount_amount = Decimal(str(sale_data.get("discount_amount", 0)))
+                tax_rate = Decimal(str(sale_data.get("tax_rate", 0)))
+                taxable_amount = max(Decimal("0.00"), subtotal - discount_amount)
+                tax_amount = taxable_amount * (tax_rate / Decimal("100.00"))
+                final_total = taxable_amount + tax_amount
+
+                amount_paid = Decimal(str(sale_data.get("amount_paid", final_total)))
+                cashier_name = sale_data.get("cashier_name") or request.user.get_full_name() or request.user.username
+
+                customer_id = sale_data.get("customer_id")
+                customer = Customer.objects.filter(pk=customer_id).first() if customer_id else None
+
+                sale = Sale.objects.create(
+                    cashier_name=cashier_name,
+                    customer=customer,
+                    total=final_total,
+                    amount_paid=amount_paid,
+                    discount_amount=discount_amount,
+                    tax_rate=tax_rate,
+                    tax_amount=tax_amount,
+                )
+
+                for line in lines:
+                    SaleItem.objects.create(
+                        sale=sale,
+                        product=line["product"],
+                        quantity=line["quantity"],
+                        unit_price=line["unit_price"],
+                        line_total=line["line_total"],
+                    )
+                    StockMovement.objects.create(
+                        product=line["product"],
+                        movement_type=StockMovement.SALE,
+                        quantity=-line["quantity"],
+                        note=f"Offline Sale #{sale.pk} (temp: {temp_receipt})",
+                    )
+
+                synced.append({
+                    "temp_receipt": temp_receipt,
+                    "server_receipt": sale.receipt_number,
+                    "sale_id": sale.id,
+                })
+        except Exception as err:
+            errors.append({
+                "temp_receipt": temp_receipt,
+                "error": str(err),
+            })
+
+    return JsonResponse({"synced": synced, "errors": errors})

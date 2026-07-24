@@ -21,3 +21,8 @@ staticfiles/
 .idea/
 .vscode/
 .DS_Store
+
+# Offline archives
+offline_packages/
+shop_offline_install*
+

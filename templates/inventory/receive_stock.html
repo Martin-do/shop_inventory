@@ -5,18 +5,78 @@
   <h1>Receive Stock</h1>
 </section>
 
-<form class="form panel compact" method="post">
+<form class="form panel compact" method="post" id="receive-stock-form">
   {% csrf_token %}
   {{ form.non_field_errors }}
   <label>Barcode {{ form.barcode }}</label>
   {{ form.barcode.errors }}
+  
   {% if product %}
-    <p class="found">{{ product.name }} · Current stock: {{ product.stock_on_hand }}</p>
+    <p class="found" style="margin: 6px 0 12px 0;">✓ Found Product: <strong>{{ product.name }}</strong> {% if product.variant %}({{ product.variant }}){% endif %} · Current Stock: <strong>{{ product.stock_on_hand }}</strong></p>
+  {% elif is_new_unregistered %}
+    <div style="background: #fff8e6; border: 1px solid #ffe58f; padding: 12px; border-radius: 6px; margin: 10px 0;">
+      <p style="margin: 0 0 10px 0; color: #873800; font-weight: bold;">⚠️ Barcode not found in database!</p>
+      <p style="margin: 0; font-size: 14px; color: #595959;">Enter the product details below to register and receive stock in one step.</p>
+    </div>
   {% endif %}
-  <label>Quantity {{ form.quantity }}</label>
-  {{ form.quantity.errors }}
-  <label>Note {{ form.note }}</label>
-  {{ form.note.errors }}
-  <button class="button primary">Add Stock</button>
+
+  <div id="new-product-fields" style="{% if is_new_unregistered %}display: block;{% else %}display: none;{% endif %} margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 15px;">
+    <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 16px; color: var(--accent);">New Product Details</h3>
+    <label>Product Name {{ form.name }}</label>
+    {{ form.name.errors }}
+    
+    <label>Variant / Size {{ form.variant }}</label>
+    {{ form.variant.errors }}
+    
+    <label>Category {{ form.category }}</label>
+    {{ form.category.errors }}
+    
+    <label>New Category {{ form.new_category }}</label>
+    {{ form.new_category.errors }}
+    
+    <div style="display: flex; gap: 12px;">
+      <label style="flex: 1;">Cost Price (₦) {{ form.cost_price }}</label>
+      <label style="flex: 1;">Selling Price (₦) {{ form.selling_price }}</label>
+    </div>
+    {{ form.cost_price.errors }}
+    {{ form.selling_price.errors }}
+    
+    <label>Reorder Level {{ form.reorder_level }}</label>
+    {{ form.reorder_level.errors }}
+  </div>
+
+  <div style="margin-top: 15px;">
+    <label>Quantity to Add {{ form.quantity }}</label>
+    {{ form.quantity.errors }}
+    
+    <label>Note {{ form.note }}</label>
+    {{ form.note.errors }}
+  </div>
+
+  <div style="margin-top: 15px; display: flex; gap: 10px; align-items: center;">
+    <button class="button primary">Add Stock</button>
+    {% if not is_new_unregistered and not product %}
+      <button type="button" class="button" id="btn-toggle-new" style="font-size: 13px;">+ Register New Product</button>
+    {% endif %}
+  </div>
 </form>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const btnToggle = document.getElementById("btn-toggle-new");
+    const fieldsDiv = document.getElementById("new-product-fields");
+    if (btnToggle && fieldsDiv) {
+      btnToggle.addEventListener("click", () => {
+        if (fieldsDiv.style.display === "none") {
+          fieldsDiv.style.display = "block";
+          btnToggle.innerText = "- Hide New Product Details";
+        } else {
+          fieldsDiv.style.display = "none";
+          btnToggle.innerText = "+ Register New Product";
+        }
+      });
+    }
+  });
+</script>
 {% endblock %}
+

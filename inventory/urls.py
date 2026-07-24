@@ -34,7 +34,9 @@ urlpatterns = [
     path("customers/", views.customer_list, name="customer_list"),
     path("customers/new/", views.customer_create, name="customer_create"),
     path("customers/<int:pk>/edit/", views.customer_update, name="customer_update"),
-    # API Search
+    # API Endpoints
     path("api/products/search/", views.api_product_search, name="api_product_search"),
+    path("api/products/catalog/", views.api_active_catalog, name="api_active_catalog"),
+    path("api/pos/sync-offline/", views.api_sync_offline, name="api_sync_offline"),
 ]
 
