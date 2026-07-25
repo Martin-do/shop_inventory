@@ -14,11 +14,7 @@ def _env_bool(name, default):
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-before-public-deployment")
 DEBUG = _env_bool("DEBUG", True)
-ALLOWED_HOSTS = [
-    host.strip()
-    for host in os.environ.get("ALLOWED_HOSTS", "*").split(",")
-    if host.strip()
-]
+ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
