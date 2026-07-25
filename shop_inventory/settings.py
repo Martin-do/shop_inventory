@@ -13,8 +13,20 @@ def _env_bool(name, default):
 
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-before-public-deployment")
-DEBUG = _env_bool("DEBUG", True)
 ALLOWED_HOSTS = ["*"]
+
+extra_trusted = [
+    origin.strip()
+    for origin in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+CSRF_TRUSTED_ORIGINS = [
+    "http://147.124.223.97:8010",
+    "http://shcssibadan.com.ng:8010",
+    "https://shcssibadan.com.ng:8010",
+    "http://127.0.0.1:8010",
+    "http://localhost:8010",
+] + extra_trusted
 
 INSTALLED_APPS = [
     "django.contrib.admin",
