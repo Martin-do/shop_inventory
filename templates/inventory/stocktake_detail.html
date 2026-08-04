@@ -1,37 +1,108 @@
 {% extends 'base.html' %}
 {% block title %}{{ session.name }}{% endblock %}
+{% block page_class %}page-stocktake{% endblock %}
 {% block content %}
-<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
-<div><a href="{% url 'stocktake_list' %}">← Opening inventory</a><h1>{{ session.name }}</h1><p>Status: <strong>{{ session.get_status_display }}</strong> · {{ session.total_products }} products · {{ session.total_good_units }} approved good units</p></div>
-{% if user.role == 'admin' %}<div style="display:flex;gap:8px;flex-wrap:wrap">
-{% if session.status == 'draft' %}<form method="post" action="{% url 'stocktake_start' session.id %}">{% csrf_token %}<button class="button primary">Start Counting</button></form>{% endif %}
-{% if session.status == 'counting' %}<form method="post" action="{% url 'stocktake_submit_review' session.id %}">{% csrf_token %}<button class="button primary">Submit for Review</button></form>{% endif %}
-{% if session.status == 'review' %}<form method="post" action="{% url 'stocktake_apply' session.id %}">{% csrf_token %}<button class="button primary" {% if unapproved_count %}disabled{% endif %}>Apply Opening Inventory</button></form>{% endif %}
-</div>{% endif %}
-</div>
+<section class="stocktake-hero">
+  <div>
+    <a class="stocktake-back" href="{% url 'stocktake_list' %}">← Opening inventory</a>
+    <div class="stocktake-title-row">
+      <h1>{{ session.name }}</h1>
+      <span class="status-pill status-{{ session.status }}">{{ session.get_status_display }}</span>
+    </div>
+    <p class="stocktake-subtitle">
+      Coordinate teams, monitor zone progress, review exceptions and apply the approved opening balance once.
+    </p>
+  </div>
 
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0">
-<div class="card"><strong>Zones</strong><div style="font-size:28px">{{ zones|length }}</div></div>
-<div class="card"><strong>Recounts</strong><div style="font-size:28px">{{ recount_count }}</div></div>
-<div class="card"><strong>Awaiting approval</strong><div style="font-size:28px">{{ unapproved_count }}</div></div>
-</div>
+  {% if user.role == 'admin' %}
+  <div class="stocktake-primary-actions">
+    {% if session.status == 'draft' %}
+      <form method="post" action="{% url 'stocktake_start' session.id %}">{% csrf_token %}<button class="button primary">Start counting</button></form>
+    {% elif session.status == 'counting' %}
+      <form method="post" action="{% url 'stocktake_submit_review' session.id %}">{% csrf_token %}<button class="button primary">Submit for review</button></form>
+    {% elif session.status == 'review' %}
+      <form method="post" action="{% url 'stocktake_apply' session.id %}">{% csrf_token %}<button class="button primary" {% if unapproved_count %}disabled title="Approve every count before applying"{% endif %}>Apply opening inventory</button></form>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
 
-<h2>Zones and teams</h2>
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">
-{% for zone in zones %}<div class="card">
-<div style="display:flex;justify-content:space-between"><h3 style="margin-top:0">{{ zone.name }}</h3><span>{% if zone.is_complete %}✓ Complete{% else %}Open{% endif %}</span></div>
-<p>{{ zone.item_count }} product count{{ zone.item_count|pluralize }}</p>
-<p><strong>Assigned:</strong> {% for person in zone.assigned_users.all %}{{ person.username }}{% if not forloop.last %}, {% endif %}{% empty %}Nobody{% endfor %}</p>
-{% if user.role == 'admin' and session.status == 'draft' %}<form method="post" action="{% url 'stocktake_assign_zone' zone.id %}">{% csrf_token %}<label>Team</label><select name="users" multiple size="4" style="width:100%">{% for person in staff %}<option value="{{ person.id }}" {% if person in zone.assigned_users.all %}selected{% endif %}>{{ person.username }} ({{ person.role }})</option>{% endfor %}</select><button class="button" style="margin-top:8px">Save assignment</button></form>{% endif %}
-{% if not zone.is_complete and session.status == 'counting' %}<a class="button primary" style="margin-top:10px" href="{% url 'stocktake_count_zone' zone.id %}">Count this zone</a>{% endif %}
-</div>{% endfor %}
-</div>
+<section class="stocktake-metrics" aria-label="Stocktake summary">
+  <article><span class="metric-label">Zones</span><strong>{{ zones|length }}</strong><small>Physical counting areas</small></article>
+  <article><span class="metric-label">Products counted</span><strong>{{ session.total_products }}</strong><small>Unique products in this session</small></article>
+  <article><span class="metric-label">Approved good units</span><strong>{{ session.total_good_units }}</strong><small>Eligible for sellable stock</small></article>
+  <article class="{% if recount_count %}metric-warning{% endif %}"><span class="metric-label">Recounts</span><strong>{{ recount_count }}</strong><small>Lines requiring another count</small></article>
+  <article class="{% if unapproved_count %}metric-warning{% endif %}"><span class="metric-label">Awaiting approval</span><strong>{{ unapproved_count }}</strong><small>Review before final application</small></article>
+</section>
+
+<section class="stocktake-section">
+  <div class="section-heading-row">
+    <div><h2>Zones and teams</h2><p>Assign staff while the session is in draft, then open each zone for counting.</p></div>
+    <span class="section-count">{{ zones|length }} zone{{ zones|length|pluralize }}</span>
+  </div>
+
+  <div class="zone-card-grid">
+    {% for zone in zones %}
+    <article class="zone-card {% if zone.is_complete %}zone-complete{% endif %}">
+      <header class="zone-card-header">
+        <div>
+          <span class="zone-eyebrow">Zone {{ forloop.counter }}</span>
+          <h3>{{ zone.name }}</h3>
+          {% if zone.description %}<p>{{ zone.description }}</p>{% endif %}
+        </div>
+        <span class="zone-state">{% if zone.is_complete %}✓ Complete{% else %}Open{% endif %}</span>
+      </header>
+
+      <div class="zone-card-stats">
+        <div><strong>{{ zone.item_count }}</strong><span>Product count{{ zone.item_count|pluralize }}</span></div>
+        <div><strong>{{ zone.assigned_users.count }}</strong><span>Assigned staff</span></div>
+      </div>
+
+      <div class="team-summary">
+        <span class="team-summary-label">Current team</span>
+        <div class="team-chips">
+          {% for person in zone.assigned_users.all %}<span class="team-chip">{{ person.username }}</span>{% empty %}<span class="team-empty">No staff assigned</span>{% endfor %}
+        </div>
+      </div>
+
+      {% if user.role == 'admin' and session.status == 'draft' %}
+      <form class="team-assignment-form" method="post" action="{% url 'stocktake_assign_zone' zone.id %}">
+        {% csrf_token %}
+        <label for="zone-team-{{ zone.id }}">Assign counting team</label>
+        <select id="zone-team-{{ zone.id }}" name="users" multiple size="4">
+          {% for person in staff %}<option value="{{ person.id }}" {% if person in zone.assigned_users.all %}selected{% endif %}>{{ person.username }} — {{ person.role }}</option>{% endfor %}
+        </select>
+        <small>Hold Ctrl on Windows or Command on Mac to choose more than one person.</small>
+        <button class="button wide">Save team assignment</button>
+      </form>
+      {% endif %}
+
+      {% if not zone.is_complete and session.status == 'counting' %}
+        <a class="button primary wide zone-count-button" href="{% url 'stocktake_count_zone' zone.id %}">Open counting workspace</a>
+      {% elif zone.is_complete %}
+        <div class="zone-complete-note">This zone has been submitted by {{ zone.completed_by|default:'the assigned team' }}.</div>
+      {% endif %}
+    </article>
+    {% empty %}
+      <div class="empty-state"><h3>No zones yet</h3><p>Add physical shop areas before starting the stocktake.</p></div>
+    {% endfor %}
+  </div>
+</section>
 
 {% if user.role == 'admin' and session.status == 'review' %}
-<h2 style="margin-top:26px">Review counts</h2>
-<div class="card" style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th>Product</th><th>Entered</th><th>Approved</th><th>Damaged</th><th>Expired</th><th>Action</th></tr></thead><tbody>
-{% for row in session.counts.all %}<tr><td>{{ row.product.name }}<br><small>{{ row.zone.name }}</small></td><td>{{ row.good_quantity }}</td><td>{{ row.approved_good_quantity }}</td><td>{{ row.damaged_quantity }}</td><td>{{ row.expired_quantity }}</td><td><form method="post" action="{% url 'stocktake_review_count' row.id %}" style="display:flex;gap:6px;min-width:250px">{% csrf_token %}<input type="number" name="approved_good_quantity" min="0" value="{{ row.approved_good_quantity }}" style="width:85px"><button class="button primary" name="action" value="approve">Approve</button><button class="button" name="action" value="recount">Recount</button></form></td></tr>{% empty %}<tr><td colspan="6">No counts.</td></tr>{% endfor %}
-</tbody></table></div>{% endif %}
+<section class="stocktake-section">
+  <div class="section-heading-row"><div><h2>Review counts</h2><p>Approve the submitted quantity or request a recount. Original entries remain preserved.</p></div></div>
+  <div class="table-card"><table><thead><tr><th>Product and zone</th><th>Entered</th><th>Approved</th><th>Damaged</th><th>Expired</th><th>Decision</th></tr></thead><tbody>
+    {% for row in session.counts.all %}<tr><td><strong>{{ row.product.name }}</strong><small>{{ row.product.barcode }} · {{ row.zone.name }}</small></td><td>{{ row.good_quantity }}</td><td>{{ row.approved_good_quantity }}</td><td>{{ row.damaged_quantity }}</td><td>{{ row.expired_quantity }}</td><td><form class="review-inline-form" method="post" action="{% url 'stocktake_review_count' row.id %}">{% csrf_token %}<input aria-label="Approved quantity" type="number" name="approved_good_quantity" min="0" value="{{ row.approved_good_quantity }}"><button class="button primary" name="action" value="approve">Approve</button><button class="button" name="action" value="recount">Recount</button></form></td></tr>
+    {% empty %}<tr><td colspan="6"><div class="empty-state compact-empty">No count lines have been submitted.</div></td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% endif %}
 
-{% if product_totals %}<h2 style="margin-top:26px">Combined product totals</h2><div class="card" style="overflow:auto"><table style="width:100%"><thead><tr><th>Product</th><th>Entered</th><th>Approved</th><th>Damaged</th><th>Expired</th></tr></thead><tbody>{% for row in product_totals %}<tr><td>{{ row.product__name }}<br><small>{{ row.product__barcode }}</small></td><td>{{ row.entered }}</td><td>{{ row.approved }}</td><td>{{ row.damaged }}</td><td>{{ row.expired }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+{% if product_totals %}
+<section class="stocktake-section">
+  <div class="section-heading-row"><div><h2>Combined product totals</h2><p>Totals combine approved entries from every physical zone.</p></div></div>
+  <div class="table-card"><table><thead><tr><th>Product</th><th>Entered</th><th>Approved</th><th>Damaged</th><th>Expired</th></tr></thead><tbody>{% for row in product_totals %}<tr><td><strong>{{ row.product__name }}</strong><small>{{ row.product__barcode }}</small></td><td>{{ row.entered }}</td><td><strong>{{ row.approved }}</strong></td><td>{{ row.damaged }}</td><td>{{ row.expired }}</td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endif %}
 {% endblock %}
