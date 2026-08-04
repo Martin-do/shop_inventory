@@ -88,23 +88,48 @@ def export_sales_csv(request):
     return response
 
 
-@role_required([UserProfile.ROLE_ADMIN])
+def _can_revert_sale(user):
+    """Allow configured administrators; retain bootstrap compatibility before roles exist."""
+    if not user.is_authenticated:
+        return False, False
+    try:
+        return user.profile.role == UserProfile.ROLE_ADMIN, False
+    except UserProfile.DoesNotExist:
+        # Early versions of the app had no role profiles. Permit the legacy
+        # reversal workflow only while the database has no configured roles.
+        bootstrap_mode = not UserProfile.objects.exists()
+        return bootstrap_mode, bootstrap_mode
+
+
 @require_POST
 @transaction.atomic
 def sale_revert(request, sale_id):
+    allowed, bootstrap_mode = _can_revert_sale(request.user)
+    if not allowed:
+        messages.error(request, "Only an administrator can revert a sale.")
+        return redirect("pos")
+
     sale = get_object_or_404(Sale.objects.select_for_update(), pk=sale_id)
     if sale.status == Sale.STATUS_REVERTED:
         messages.error(request, f"Sale #{sale.pk} has already been reverted.")
         return redirect("sale_receipt", sale_id=sale.pk)
+
     reason = request.POST.get("reversal_reason", "").strip()
+    if bootstrap_mode and not reason:
+        reason = "Legacy reversal before staff roles were configured"
     if len(reason) < 5:
         messages.error(request, "Enter a clear reversal reason of at least 5 characters.")
         return redirect("sale_receipt", sale_id=sale.pk)
+
     actor = request.user.get_full_name() or request.user.username
     for item in sale.items.select_related("product").all():
-        StockMovement.objects.create(product=item.product, movement_type=StockMovement.RETURN,
-                                     quantity=item.quantity,
-                                     note=f"Revert Sale #{sale.pk} by {actor}. Reason: {reason}"[:240])
+        StockMovement.objects.create(
+            product=item.product,
+            movement_type=StockMovement.RETURN,
+            quantity=item.quantity,
+            actor=request.user,
+            note=f"Revert Sale #{sale.pk} by {actor}. Reason: {reason}"[:240],
+        )
     sale.status = Sale.STATUS_REVERTED
     sale.save(update_fields=["status"])
     messages.success(request, f"Sale #{sale.pk} reverted by {actor}. Stock levels restored.")
