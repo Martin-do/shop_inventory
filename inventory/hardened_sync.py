@@ -2,16 +2,15 @@ import json
 from decimal import Decimal, InvalidOperation
 from functools import wraps
 
-from django.contrib import messages
 from django.db import transaction
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 
-from .models import Customer, Product, Sale, SaleItem, StockMovement, StoreSettings, UserProfile
+from .audit_signals import log_event
+from .models import AuditLog, Customer, Product, Sale, SaleItem, StockMovement, StoreSettings, UserProfile
 
 
 def cashier_api_required(view_func):
-    """Restrict POS API endpoints to authenticated cashiers and administrators."""
     @wraps(view_func)
     def wrapped(request, *args, **kwargs):
         if not request.user.is_authenticated:
@@ -32,28 +31,9 @@ def _money(value, field_name):
     return parsed.quantize(Decimal("0.01"))
 
 
-def _existing_synced_sale(temp_receipt):
-    if not temp_receipt:
-        return None
-    marker = f"temp: {temp_receipt}"
-    movement = (
-        StockMovement.objects.filter(movement_type=StockMovement.SALE, note__contains=marker)
-        .order_by("id")
-        .first()
-    )
-    if not movement:
-        return None
-    try:
-        sale_id = int(movement.note.split("Offline Sale #", 1)[1].split(" ", 1)[0])
-    except (IndexError, TypeError, ValueError):
-        return None
-    return Sale.objects.filter(pk=sale_id).first()
-
-
 @cashier_api_required
 @require_POST
 def api_sync_offline(request):
-    """Idempotently sync POS sales while treating server data as authoritative."""
     try:
         data = json.loads(request.body)
     except (TypeError, ValueError) as exc:
@@ -79,11 +59,7 @@ def api_sync_offline(request):
 
         try:
             with transaction.atomic():
-                # Serialise sync processing on the singleton settings row. This makes
-                # the legacy temp-reference lookup safe without altering existing Sale data.
-                StoreSettings.objects.select_for_update().get_or_create(pk=1)
-
-                existing_sale = _existing_synced_sale(temp_receipt)
+                existing_sale = Sale.objects.select_for_update().filter(client_reference=temp_receipt).first()
                 if existing_sale:
                     synced.append({
                         "temp_receipt": temp_receipt,
@@ -106,9 +82,7 @@ def api_sync_offline(request):
 
                 products = {
                     product.barcode: product
-                    for product in Product.objects.select_for_update().filter(
-                        barcode__in=requested.keys(), is_active=True
-                    )
+                    for product in Product.objects.select_for_update().filter(barcode__in=requested.keys(), is_active=True)
                 }
                 missing = sorted(set(requested) - set(products))
                 if missing:
@@ -120,9 +94,7 @@ def api_sync_offline(request):
                     product = products[barcode]
                     available = product.stock_on_hand
                     if quantity > available:
-                        raise ValueError(
-                            f"Insufficient stock for {product.name}. Requested {quantity}; available {available}."
-                        )
+                        raise ValueError(f"Insufficient stock for {product.name}. Requested {quantity}; available {available}.")
                     unit_price = product.selling_price
                     line_total = unit_price * quantity
                     subtotal += line_total
@@ -149,7 +121,9 @@ def api_sync_offline(request):
                         raise ValueError("Selected customer does not exist.")
 
                 sale = Sale.objects.create(
+                    cashier=request.user,
                     cashier_name=request.user.get_full_name() or request.user.username,
+                    client_reference=temp_receipt,
                     customer=customer,
                     total=final_total,
                     amount_paid=amount_paid,
@@ -168,11 +142,19 @@ def api_sync_offline(request):
                     )
                     StockMovement.objects.create(
                         product=product,
+                        actor=request.user,
                         movement_type=StockMovement.SALE,
                         quantity=-quantity,
-                        note=f"Offline Sale #{sale.pk} (temp: {temp_receipt})",
+                        note=f"Offline Sale #{sale.pk} ({temp_receipt})"[:240],
                     )
 
+                log_event(
+                    AuditLog.ACTION_SYNC,
+                    f"Offline sale {sale.receipt_number} synced",
+                    sale,
+                    metadata={"client_reference": temp_receipt, "item_count": len(lines)},
+                    actor=request.user,
+                )
                 synced.append({
                     "temp_receipt": temp_receipt,
                     "server_receipt": sale.receipt_number,
