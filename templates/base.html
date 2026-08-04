@@ -5,7 +5,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Shop Inventory{% endblock %}</title>
-  <link rel="stylesheet" href="{% static 'inventory/styles.css' %}">
+  <link rel="stylesheet" href="{% static 'inventory/styles.css' %}?v=20260804-2">
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
   <header class="topbar">
@@ -96,5 +97,6 @@
     });
   </script>
   <script src="{% static 'inventory/app_hardening.js' %}"></script>
+  {% block extra_scripts %}{% endblock %}
 </body>
 </html>
