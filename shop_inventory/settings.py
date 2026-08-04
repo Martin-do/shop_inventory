@@ -13,7 +13,8 @@ def _env_bool(name, default):
 
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-before-public-deployment")
-ALLOWED_HOSTS = ["*"]
+DEBUG = _env_bool("DEBUG", True)
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get("ALLOWED_HOSTS", "*").split(",") if host.strip()]
 
 extra_trusted = [
     origin.strip()
@@ -82,10 +83,10 @@ TIME_ZONE = "Africa/Lagos"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
-MEDIA_URL = "media/"
+MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"
