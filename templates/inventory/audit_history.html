@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Action History{% endblock %}
+{% block content %}
+<section class="heading">
+  <div>
+    <h1>Staff Action History</h1>
+    <p>Complete audit trail of who did what, when, and what changed.</p>
+  </div>
+  <a class="button" href="{% url 'audit_export_csv' %}">Export CSV</a>
+</section>
+
+<form method="get" class="panel form" style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr auto; gap:10px; align-items:end; margin-bottom:16px;">
+  <label>Search<input name="q" value="{{ query }}" placeholder="Staff, object, ID, action or page"></label>
+  <label>Action<select name="action"><option value="">All actions</option>{% for value, label in actions %}<option value="{{ value }}" {% if selected_action == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <label>Staff<input name="actor" value="{{ selected_actor }}" placeholder="Name or username"></label>
+  <label>Object<select name="object_type"><option value="">All objects</option>{% for value in object_types %}<option value="{{ value }}" {% if selected_object_type == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+  <button class="button primary" type="submit">Filter</button>
+</form>
+
+<section class="panel" style="overflow-x:auto;">
+  <table class="cart">
+    <thead><tr><th>When</th><th>Staff</th><th>Action</th><th>Object</th><th>Summary</th><th>Request</th><th></th></tr></thead>
+    <tbody>
+      {% for log in page_obj %}
+      <tr>
+        <td>{{ log.created_at|date:"Y-m-d H:i:s" }}</td>
+        <td><strong>{{ log.actor_name|default:"System" }}</strong></td>
+        <td>{{ log.get_action_display }}</td>
+        <td>{{ log.object_type }}{% if log.object_id %} #{{ log.object_id }}{% endif %}<br><small>{{ log.object_label }}</small></td>
+        <td>{{ log.summary }}</td>
+        <td><small>{{ log.request_method }} {{ log.request_path }}{% if log.ip_address %}<br>{{ log.ip_address }}{% endif %}</small></td>
+        <td><a href="{% url 'audit_detail' log.pk %}">Details</a></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7">No history entries match the selected filters.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<nav style="display:flex; justify-content:center; gap:12px; margin-top:16px;">
+  {% if page_obj.has_previous %}<a class="button" href="?page={{ page_obj.previous_page_number }}&q={{ query|urlencode }}&action={{ selected_action|urlencode }}&actor={{ selected_actor|urlencode }}&object_type={{ selected_object_type|urlencode }}">Previous</a>{% endif %}
+  <span style="padding:10px;">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}<a class="button" href="?page={{ page_obj.next_page_number }}&q={{ query|urlencode }}&action={{ selected_action|urlencode }}&actor={{ selected_actor|urlencode }}&object_type={{ selected_object_type|urlencode }}">Next</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}
