@@ -6,7 +6,7 @@ from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 from .audit_context import get_current_request
-from .models import AuditLog, BackupLog, Category, Customer, Product, Sale, SaleItem, StockMovement, StoreSettings, UserProfile
+from .models import AuditLog, Category, Customer, Product, Sale, SaleItem, StockMovement, StoreSettings, UserProfile
 
 AUDITED_MODELS = (Category, Customer, Product, Sale, SaleItem, StockMovement, StoreSettings, UserProfile)
 _before_state = {}
@@ -69,11 +69,22 @@ def log_event(action, summary, instance=None, before=None, after=None, metadata=
 
 @receiver(pre_save)
 def capture_before_state(sender, instance, **kwargs):
-    if sender not in AUDITED_MODELS or not instance.pk:
+    if sender not in AUDITED_MODELS:
         return
-    current = sender.objects.filter(pk=instance.pk).first()
-    if current:
-        _before_state[(sender, instance.pk)] = _snapshot(current)
+
+    request = get_current_request()
+    actor = request.user if request and request.user.is_authenticated else None
+    if sender is Sale and not instance.cashier_id and actor:
+        instance.cashier = actor
+        if not instance.cashier_name:
+            instance.cashier_name = actor.get_full_name() or actor.username
+    elif sender is StockMovement and not instance.actor_id and actor:
+        instance.actor = actor
+
+    if instance.pk:
+        current = sender.objects.filter(pk=instance.pk).first()
+        if current:
+            _before_state[(sender, instance.pk)] = _snapshot(current)
 
 
 @receiver(post_save)
@@ -96,9 +107,8 @@ def record_save(sender, instance, created, **kwargs):
 
 @receiver(post_delete)
 def record_delete(sender, instance, **kwargs):
-    if sender not in AUDITED_MODELS:
-        return
-    log_event(AuditLog.ACTION_DELETE, f"{sender._meta.verbose_name.title()} deleted", instance, _snapshot(instance), {})
+    if sender in AUDITED_MODELS:
+        log_event(AuditLog.ACTION_DELETE, f"{sender._meta.verbose_name.title()} deleted", instance, _snapshot(instance), {})
 
 
 @receiver(user_logged_in)
