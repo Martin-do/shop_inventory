@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}Count {{ zone.name }}{% endblock %}
+{% block content %}
+<style>
+.scan-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:16px}.camera-wrap{position:relative;background:#111;border-radius:12px;overflow:hidden;min-height:260px}.camera-wrap video{width:100%;height:100%;min-height:260px;object-fit:cover}.scan-line{position:absolute;left:10%;right:10%;top:50%;border-top:3px solid #35d07f;box-shadow:0 0 12px #35d07f}.qty-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.recent-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+@media(max-width:780px){.scan-grid{grid-template-columns:1fr}.camera-wrap,.camera-wrap video{min-height:220px}.qty-grid{grid-template-columns:1fr 1fr}.page{padding:12px}}
+</style>
+<a href="{% url 'stocktake_detail' session.id %}">← {{ session.name }}</a>
+<h1 style="margin-bottom:4px">{{ zone.name }}</h1><p class="muted">Blind count: scan, enter quantities, save, then move to the next product.</p>
+<div class="scan-grid">
+<section>
+<div class="camera-wrap" id="camera-wrap"><video id="camera" playsinline muted></video><div class="scan-line"></div></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0"><button type="button" class="button primary" id="start-camera">Start Camera Scanner</button><button type="button" class="button" id="stop-camera" disabled>Stop Camera</button><label class="button">Scan from photo<input id="photo-input" type="file" accept="image/*" capture="environment" hidden></label></div>
+<p id="camera-help" class="muted">Camera scanning works best in Chrome on Android over HTTPS or localhost. Manual barcode entry always remains available.</p>
+<div class="card">
+<form id="count-form">{% csrf_token %}
+<label>Barcode</label><div style="display:flex;gap:8px"><input id="barcode" name="barcode" inputmode="numeric" autocomplete="off" required autofocus><button class="button" type="button" id="lookup">Use barcode</button></div>
+<div id="product-result" style="padding:10px 0;font-weight:700"></div>
+<div class="qty-grid"><div><label>Good / sellable</label><input type="number" min="0" name="good_quantity" value="0"></div><div><label>Damaged</label><input type="number" min="0" name="damaged_quantity" value="0"></div><div><label>Expired</label><input type="number" min="0" name="expired_quantity" value="0"></div><div><label>Reserved</label><input type="number" min="0" name="reserved_quantity" value="0"></div></div>
+<label>Note</label><input name="note" placeholder="Optional observation">
+<button class="button primary" id="save-count" style="width:100%;margin-top:12px">Save Count</button>
+</form>
+</div>
+</section>
+<aside>
+<div class="card" id="unknown-card" hidden><h3>Unknown barcode</h3><p>Create only the minimum product record now. Details can be completed later.</p><form id="product-form">{% csrf_token %}<input type="hidden" name="barcode" id="new-barcode"><label>Product name</label><input name="name" required><label>Variant / size</label><input name="variant"><label>Category</label><input name="category"><div class="qty-grid"><div><label>Selling price</label><input name="selling_price" type="number" min="0" step="0.01" value="0"></div><div><label>Cost price</label><input name="cost_price" type="number" min="0" step="0.01" value="0"></div></div><button class="button primary" style="width:100%;margin-top:10px">Create Product</button></form></div>
+<div class="card"><h3>Recently counted</h3><div id="recent-list">{% for row in recent %}<div class="recent-row"><span><strong>{{ row.product.name }}</strong><br><small>{{ row.product.barcode }} · {{ row.counted_by.username }}</small></span><strong>{{ row.good_quantity }}</strong></div>{% empty %}<p class="muted">No items counted yet.</p>{% endfor %}</div></div>
+<form method="post" action="{% url 'stocktake_complete_zone' zone.id %}" style="margin-top:12px">{% csrf_token %}<button class="button" style="width:100%">Finish This Zone</button></form>
+</aside></div>
+<script>
+(() => {
+ const form=document.getElementById('count-form'), barcode=document.getElementById('barcode'), result=document.getElementById('product-result'), unknown=document.getElementById('unknown-card'), newBarcode=document.getElementById('new-barcode'), video=document.getElementById('camera');
+ const csrf=form.querySelector('[name=csrfmiddlewaretoken]').value; let stream=null, detector=null, scanning=false, scanLock=false, lastCode='', lastAt=0;
+ const toast=(m,t='info')=>window.shopToast?window.shopToast(m,t):console.log(m);
+ async function saveCount(){const data=new FormData(form); const r=await fetch('{% url "stocktake_save_count" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:data}); const j=await r.json(); if(r.status===404&&j.unknown){unknown.hidden=false;newBarcode.value=j.barcode;result.textContent='Unknown barcode: '+j.barcode;return;} if(!r.ok){toast(j.error||'Could not save count','error');return;} unknown.hidden=true;result.textContent=j.product+(j.variant?' — '+j.variant:'');toast('Count saved for '+j.product,'success'); const row=document.createElement('div');row.className='recent-row';const left=document.createElement('span');const strong=document.createElement('strong');strong.textContent=j.product;left.append(strong,document.createElement('br'));const small=document.createElement('small');small.textContent=j.barcode;left.append(small);const qty=document.createElement('strong');qty.textContent=j.quantities.good_quantity;row.append(left,qty);document.getElementById('recent-list').prepend(row); form.querySelectorAll('input[type=number]').forEach(i=>i.value=0);form.querySelector('[name=note]').value='';barcode.value='';barcode.focus();}
+ form.addEventListener('submit',e=>{e.preventDefault();saveCount().catch(()=>toast('Network error while saving','error'));}); document.getElementById('lookup').onclick=()=>saveCount(); barcode.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveCount();}});
+ document.getElementById('product-form').addEventListener('submit',async e=>{e.preventDefault();const r=await fetch('{% url "stocktake_quick_product" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:new FormData(e.target)});const j=await r.json();if(!r.ok){toast(j.error||'Could not create product','error');return;}unknown.hidden=true;toast(j.product+' created. Enter the count now.','success');barcode.value=j.barcode;result.textContent=j.product;e.target.reset();newBarcode.value=j.barcode;});
+ async function acceptCode(code){const now=Date.now();if(scanLock||(code===lastCode&&now-lastAt<1800))return;scanLock=true;lastCode=code;lastAt=now;barcode.value=code;toast('Barcode detected','success');if(navigator.vibrate)navigator.vibrate(80);setTimeout(()=>{scanLock=false},500);}
+ async function loop(){if(!scanning||!detector)return;try{const codes=await detector.detect(video);if(codes.length)await acceptCode(codes[0].rawValue);}catch(e){}requestAnimationFrame(loop);}
+ document.getElementById('start-camera').onclick=async()=>{if(!('BarcodeDetector'in window)){toast('Live barcode detection is not supported in this browser. Use Chrome Android, photo scan, or manual entry.','error');return;}try{detector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']});stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});video.srcObject=stream;await video.play();scanning=true;document.getElementById('start-camera').disabled=true;document.getElementById('stop-camera').disabled=false;loop();}catch(e){toast('Camera permission or secure HTTPS connection is required.','error');}};
+ document.getElementById('stop-camera').onclick=()=>{scanning=false;if(stream)stream.getTracks().forEach(t=>t.stop());video.srcObject=null;document.getElementById('start-camera').disabled=false;document.getElementById('stop-camera').disabled=true;};
+ document.getElementById('photo-input').onchange=async e=>{if(!('BarcodeDetector'in window)){toast('Photo decoding is not supported in this browser.','error');return;}const file=e.target.files[0];if(!file)return;try{detector=detector||new BarcodeDetector();const bitmap=await createImageBitmap(file);const codes=await detector.detect(bitmap);bitmap.close();if(codes.length)acceptCode(codes[0].rawValue);else toast('No barcode found in that photo. Move closer and retry.','error');}catch(err){toast('Could not read that image.','error');}};
+ window.addEventListener('beforeunload',()=>{if(stream)stream.getTracks().forEach(t=>t.stop())});
+})();
+</script>
+{% endblock %}
