@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import security_views, views
+from . import audit_views, security_views, views
 from .hardened_sync import api_sync_offline
 
 
@@ -22,6 +22,9 @@ urlpatterns = [
     path("reports/", security_views.reports, name="reports"),
     path("reports/products.csv", views.export_products_csv, name="export_products_csv"),
     path("reports/sales.csv", security_views.export_sales_csv, name="export_sales_csv"),
+    path("history/", audit_views.audit_history, name="audit_history"),
+    path("history/export.csv", audit_views.audit_export_csv, name="audit_export_csv"),
+    path("history/<int:pk>/", audit_views.audit_detail, name="audit_detail"),
     path("settings/", views.settings_dashboard, name="settings_dashboard"),
     path("settings/backup/", security_views.trigger_manual_backup, name="trigger_manual_backup"),
     path("settings/staff/", views.settings_staff_list, name="settings_staff_list"),
