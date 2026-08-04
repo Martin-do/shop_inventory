@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import views
+from .hardened_sync import api_sync_offline
 
 
 urlpatterns = [
@@ -37,6 +38,5 @@ urlpatterns = [
     # API Endpoints
     path("api/products/search/", views.api_product_search, name="api_product_search"),
     path("api/products/catalog/", views.api_active_catalog, name="api_active_catalog"),
-    path("api/pos/sync-offline/", views.api_sync_offline, name="api_sync_offline"),
+    path("api/pos/sync-offline/", api_sync_offline, name="api_sync_offline"),
 ]
-
