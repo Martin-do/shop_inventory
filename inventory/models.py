@@ -52,7 +52,6 @@ class Category(models.Model):
 
 class ProductQuerySet(models.QuerySet):
     def with_stock(self):
-        """Annotate each product with ``stock`` to avoid per-row aggregate queries."""
         return self.annotate(stock=Coalesce(Sum("movements__quantity"), 0))
 
 
@@ -102,6 +101,7 @@ class StockMovement(models.Model):
     ]
 
     product = models.ForeignKey(Product, related_name="movements", on_delete=models.PROTECT)
+    actor = models.ForeignKey(User, related_name="stock_movements", on_delete=models.PROTECT, null=True, blank=True)
     movement_type = models.CharField(max_length=20, choices=MOVEMENT_TYPES)
     quantity = models.IntegerField()
     note = models.CharField(max_length=240, blank=True)
@@ -126,9 +126,7 @@ class Customer(models.Model):
         ordering = ["name"]
 
     def __str__(self):
-        if self.phone:
-            return f"{self.name} ({self.phone})"
-        return self.name
+        return f"{self.name} ({self.phone})" if self.phone else self.name
 
 
 class StoreSettings(models.Model):
@@ -152,12 +150,13 @@ class StoreSettings(models.Model):
 
     @classmethod
     def get_solo(cls):
-        obj, created = cls.objects.get_or_create(pk=1)
+        obj, _ = cls.objects.get_or_create(pk=1)
         return obj
 
 
 class Sale(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
+    cashier = models.ForeignKey(User, related_name="sales", on_delete=models.PROTECT, null=True, blank=True)
     cashier_name = models.CharField(max_length=120, blank=True)
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, blank=True, null=True, related_name="sales")
     total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
@@ -165,13 +164,11 @@ class Sale(models.Model):
     discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
     tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
-    
+    client_reference = models.CharField(max_length=120, unique=True, null=True, blank=True)
+
     STATUS_COMPLETED = "completed"
     STATUS_REVERTED = "reverted"
-    STATUS_CHOICES = [
-        (STATUS_COMPLETED, "Completed"),
-        (STATUS_REVERTED, "Reverted"),
-    ]
+    STATUS_CHOICES = [(STATUS_COMPLETED, "Completed"), (STATUS_REVERTED, "Reverted")]
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_COMPLETED)
     receipt_number = models.CharField(max_length=50, unique=True, blank=True, null=True)
 
@@ -182,17 +179,15 @@ class Sale(models.Model):
         return f"Sale {self.receipt_number or self.pk} - {self.total}"
 
     def save(self, *args, **kwargs):
-        if not self.receipt_number:
-            date_str = self.created_at.strftime("%Y%m%d") if self.created_at else timezone.now().strftime("%Y%m%d")
-            sales_today = self.__class__.objects.filter(receipt_number__startswith=f"INV-{date_str}-")
-            count = sales_today.count()
-            while True:
-                number = f"INV-{date_str}-{(count + 1):04d}"
-                if not self.__class__.objects.filter(receipt_number=number).exists():
-                    self.receipt_number = number
-                    break
-                count += 1
+        creating = self.pk is None
+        if creating and not self.cashier_name and self.cashier:
+            self.cashier_name = self.cashier.get_full_name() or self.cashier.username
         super().save(*args, **kwargs)
+        if not self.receipt_number:
+            date_str = self.created_at.strftime("%Y%m%d")
+            receipt = f"INV-{date_str}-{self.pk:06d}"
+            type(self).objects.filter(pk=self.pk, receipt_number__isnull=True).update(receipt_number=receipt)
+            self.receipt_number = receipt
 
     @property
     def change_due(self):
@@ -208,6 +203,48 @@ class SaleItem(models.Model):
 
     def __str__(self):
         return f"{self.product} x {self.quantity}"
+
+
+class AuditLog(models.Model):
+    ACTION_CREATE = "create"
+    ACTION_UPDATE = "update"
+    ACTION_DELETE = "delete"
+    ACTION_LOGIN = "login"
+    ACTION_LOGOUT = "logout"
+    ACTION_VIEW = "view"
+    ACTION_EXPORT = "export"
+    ACTION_SYNC = "sync"
+    ACTION_REVERT = "revert"
+    ACTION_CHOICES = [
+        (ACTION_CREATE, "Created"), (ACTION_UPDATE, "Updated"),
+        (ACTION_DELETE, "Deleted"), (ACTION_LOGIN, "Logged in"),
+        (ACTION_LOGOUT, "Logged out"), (ACTION_VIEW, "Viewed"),
+        (ACTION_EXPORT, "Exported"), (ACTION_SYNC, "Synced"),
+        (ACTION_REVERT, "Reverted"),
+    ]
+
+    actor = models.ForeignKey(User, related_name="audit_logs", on_delete=models.SET_NULL, null=True, blank=True)
+    actor_name = models.CharField(max_length=150, blank=True)
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    object_type = models.CharField(max_length=100, blank=True, db_index=True)
+    object_id = models.CharField(max_length=100, blank=True, db_index=True)
+    object_label = models.CharField(max_length=240, blank=True)
+    summary = models.CharField(max_length=240)
+    before = models.JSONField(default=dict, blank=True)
+    after = models.JSONField(default=dict, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    request_method = models.CharField(max_length=10, blank=True)
+    request_path = models.CharField(max_length=255, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["object_type", "object_id", "-created_at"])]
+
+    def __str__(self):
+        return f"{self.actor_name or 'System'} {self.action}: {self.summary}"
 
 
 class BackupLog(models.Model):
