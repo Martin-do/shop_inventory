@@ -22,6 +22,7 @@
         {% endif %}
         {% if user.role == "admin" %}
           <a href="{% url 'reports' %}">Reports</a>
+          <a href="{% url 'audit_history' %}">History</a>
           <a href="{% url 'settings_dashboard' %}">Settings</a>
         {% endif %}
         <span class="user" title="Role: {{ user.role }}">{{ user.get_username }} <small style="opacity: 0.7; font-size: 11px;">({{ user.role }})</small></span>
@@ -47,7 +48,7 @@
     {% endif %}
     {% block content %}{% endblock %}
   </main>
-  
+
   <script>
     function playSound(type) {
       if (localStorage.getItem("mute_audio") === "true") return;
@@ -80,14 +81,14 @@
       const messages = document.querySelectorAll(".message");
       let hasError = false;
       let hasSuccess = false;
-      
+
       messages.forEach(msg => {
         if (msg.classList.contains("error") || msg.classList.contains("danger")) {
           hasError = true;
         } else {
           hasSuccess = true;
         }
-        
+
         setTimeout(() => {
           msg.style.transition = "opacity 0.5s ease, transform 0.5s ease";
           msg.style.opacity = "0";
@@ -96,11 +97,8 @@
         }, 4000);
       });
 
-      if (hasError) {
-        playSound("error");
-      } else if (hasSuccess) {
-        playSound("success");
-      }
+      if (hasError) playSound("error");
+      else if (hasSuccess) playSound("success");
     });
   </script>
   <script src="{% static 'inventory/app_hardening.js' %}"></script>
