@@ -1,4 +1,5 @@
 import django.db.models.deletion
+import django.utils.timezone
 from django.conf import settings
 from django.db import migrations, models
 
@@ -71,7 +72,7 @@ class Migration(migrations.Migration):
                 ("event", models.CharField(max_length=80)),
                 ("message", models.CharField(max_length=240)),
                 ("metadata", models.JSONField(blank=True, default=dict)),
-                ("created_at", models.DateTimeField()),
+                ("created_at", models.DateTimeField(default=django.utils.timezone.now)),
                 ("actor", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to=settings.AUTH_USER_MODEL)),
                 ("session", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="events", to="inventory.stocktakesession")),
             ],
