@@ -6,6 +6,7 @@ class InventoryConfig(AppConfig):
     name = "inventory"
 
     def ready(self):
+        from . import stocktake_models  # noqa: F401
         from . import audit_signals  # noqa: F401
 
         import sys
