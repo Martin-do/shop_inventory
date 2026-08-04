@@ -1,48 +1,62 @@
 (() => {
   "use strict";
 
+  const cleanText = (value) => String(value ?? "").replace(/[<>`]/g, "").slice(0, 240);
+
   function showToast(message, type = "info") {
     let container = document.getElementById("app-toast-container");
     if (!container) {
       container = document.createElement("div");
       container.id = "app-toast-container";
       Object.assign(container.style, {
-        position: "fixed",
-        top: "16px",
-        right: "16px",
-        zIndex: "3000",
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
-        maxWidth: "360px"
+        position: "fixed", top: "16px", right: "16px", zIndex: "3000",
+        display: "flex", flexDirection: "column", gap: "8px", maxWidth: "360px"
       });
       document.body.appendChild(container);
     }
-
     const toast = document.createElement("div");
     toast.setAttribute("role", "status");
     toast.textContent = String(message);
     Object.assign(toast.style, {
-      padding: "12px 14px",
-      borderRadius: "8px",
-      boxShadow: "0 8px 24px rgba(0,0,0,.18)",
+      padding: "12px 14px", borderRadius: "8px", boxShadow: "0 8px 24px rgba(0,0,0,.18)",
       background: type === "error" ? "#b42318" : type === "success" ? "#176b5c" : "#1f2937",
-      color: "white",
-      fontWeight: "700",
-      fontFamily: "system-ui, sans-serif"
+      color: "white", fontWeight: "700", fontFamily: "system-ui, sans-serif"
     });
     container.appendChild(toast);
     window.setTimeout(() => toast.remove(), 4500);
   }
 
   window.shopToast = showToast;
-  window.alert = (message) => showToast(message, /error|failed|not found|insufficient|cannot|only /i.test(String(message)) ? "error" : "info");
+  window.alert = (message) => showToast(
+    message,
+    /error|failed|not found|insufficient|cannot|only /i.test(String(message)) ? "error" : "info"
+  );
 
-  function textCell(text, styles = {}) {
-    const td = document.createElement("td");
-    td.textContent = text;
-    Object.assign(td.style, styles);
-    return td;
+  function sanitizeCachedCart() {
+    const key = "pos_active_cart";
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const cart = JSON.parse(raw);
+      if (!Array.isArray(cart)) return;
+      const sanitized = cart.map((item) => ({
+        ...item,
+        name: cleanText(item.name),
+        variant: cleanText(item.variant),
+        barcode: cleanText(item.barcode),
+        image_url: /^(https?:\/\/|\/(?!\/))/i.test(String(item.image_url || "")) ? item.image_url : null
+      }));
+      const next = JSON.stringify(sanitized);
+      if (next !== raw && sessionStorage.getItem("cart_sanitized_reload") !== "1") {
+        localStorage.setItem(key, next);
+        sessionStorage.setItem("cart_sanitized_reload", "1");
+        window.location.reload();
+      } else {
+        sessionStorage.removeItem("cart_sanitized_reload");
+      }
+    } catch (_) {
+      localStorage.removeItem(key);
+    }
   }
 
   function hardenPOS() {
@@ -57,8 +71,15 @@
       window.addToCartFromObj = function(product, qty) {
         if (scanLocked) return;
         scanLocked = true;
+        const safeProduct = {
+          ...product,
+          name: cleanText(product?.name),
+          variant: cleanText(product?.variant),
+          barcode: cleanText(product?.barcode),
+          image_url: /^(https?:\/\/|\/(?!\/))/i.test(String(product?.image_url || "")) ? product.image_url : null
+        };
         try {
-          originalAdd(product, qty);
+          originalAdd(safeProduct, qty);
         } finally {
           window.setTimeout(() => { scanLocked = false; }, 350);
         }
@@ -69,14 +90,19 @@
       checkoutForm.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
+          event.stopPropagation();
           showToast("Use Complete Sale, then confirm the transaction.", "info");
         }
       }, true);
     }
 
     if (confirmButton) {
-      confirmButton.addEventListener("click", () => {
-        if (confirmButton.dataset.submitting === "1") return;
+      confirmButton.addEventListener("click", (event) => {
+        if (confirmButton.dataset.submitting === "1") {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
         confirmButton.dataset.submitting = "1";
         confirmButton.disabled = true;
         confirmButton.textContent = "Submitting…";
@@ -99,41 +125,31 @@
           container.style.display = "none";
           return;
         }
-
         results.forEach((product) => {
           const row = document.createElement("div");
           Object.assign(row.style, {
-            padding: "10px 14px",
-            borderBottom: "1px solid var(--line)",
-            cursor: "pointer",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            fontSize: "15px"
+            padding: "10px 14px", borderBottom: "1px solid var(--line)", cursor: "pointer",
+            display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "15px"
           });
-
           const details = document.createElement("div");
           const name = document.createElement("strong");
-          name.textContent = product.name || "Unnamed product";
+          name.textContent = cleanText(product.name) || "Unnamed product";
           details.appendChild(name);
           if (product.variant) {
             const variant = document.createElement("span");
-            variant.textContent = ` ${product.variant}`;
+            variant.textContent = ` ${cleanText(product.variant)}`;
             variant.style.marginLeft = "6px";
             details.appendChild(variant);
           }
           const meta = document.createElement("small");
           meta.style.display = "block";
           meta.style.marginTop = "4px";
-          meta.textContent = `Barcode: ${product.barcode || "-"} | Price: ₦${Number(product.price || 0).toLocaleString()} | Stock: ${product.stock ?? 0}`;
+          meta.textContent = `Barcode: ${cleanText(product.barcode) || "-"} | Price: ₦${Number(product.price || 0).toLocaleString()} | Stock: ${product.stock ?? 0}`;
           details.appendChild(meta);
-
           const button = document.createElement("button");
           button.type = "button";
           button.className = "button primary";
           button.textContent = "Select";
-          button.style.padding = "4px 10px";
-
           row.append(details, button);
           row.addEventListener("click", () => {
             const qty = parseInt(document.getElementById("pos-quantity-input")?.value, 10) || 1;
@@ -147,83 +163,8 @@
         container.style.display = "block";
       };
     }
-
-    if (typeof window.renderCart === "function") {
-      window.renderCart = function() {
-        const body = document.getElementById("cart-table-body");
-        if (!body) return;
-        body.replaceChildren();
-        if (!Array.isArray(window.localCart) || window.localCart.length === 0) {
-          const tr = document.createElement("tr");
-          const td = textCell("Scan an item to begin.");
-          td.colSpan = 5;
-          tr.appendChild(td);
-          body.appendChild(tr);
-          if (typeof window.updateCheckoutSummary === "function") window.updateCheckoutSummary();
-          return;
-        }
-
-        window.localCart.forEach((item, index) => {
-          const tr = document.createElement("tr");
-          const imageCell = document.createElement("td");
-          if (item.image_url && /^\/(?!\/)|^https?:\/\//i.test(item.image_url)) {
-            const img = document.createElement("img");
-            img.src = item.image_url;
-            img.alt = item.name || "Product";
-            Object.assign(img.style, { width: "50px", height: "50px", objectFit: "cover", borderRadius: "6px" });
-            imageCell.appendChild(img);
-          } else {
-            imageCell.textContent = "📦";
-          }
-
-          const itemCell = document.createElement("td");
-          const itemName = document.createElement("strong");
-          itemName.textContent = item.name || "Unnamed product";
-          itemCell.appendChild(itemName);
-          if (item.variant) {
-            const variant = document.createElement("small");
-            variant.textContent = ` (${item.variant})`;
-            itemCell.appendChild(variant);
-          }
-          const barcode = document.createElement("small");
-          barcode.style.display = "block";
-          barcode.textContent = item.barcode || "";
-          itemCell.appendChild(barcode);
-
-          const qtyCell = document.createElement("td");
-          qtyCell.style.textAlign = "center";
-          const minus = document.createElement("button");
-          minus.type = "button";
-          minus.className = "button";
-          minus.textContent = "−";
-          minus.addEventListener("click", () => window.updateCartQty(index, -1));
-          const amount = document.createElement("span");
-          amount.textContent = String(item.quantity);
-          amount.style.margin = "0 8px";
-          const plus = document.createElement("button");
-          plus.type = "button";
-          plus.className = "button";
-          plus.textContent = "+";
-          plus.addEventListener("click", () => window.updateCartQty(index, 1));
-          qtyCell.append(minus, amount, plus);
-
-          const totalCell = textCell(`₦${(Number(item.price) * Number(item.quantity)).toLocaleString("en-US", {minimumFractionDigits: 2})}`);
-          const removeCell = document.createElement("td");
-          const remove = document.createElement("button");
-          remove.type = "button";
-          remove.className = "link-button";
-          remove.textContent = "Remove";
-          remove.addEventListener("click", () => window.removeFromCart(index));
-          removeCell.appendChild(remove);
-
-          tr.append(imageCell, itemCell, qtyCell, totalCell, removeCell);
-          body.appendChild(tr);
-        });
-        if (typeof window.updateCheckoutSummary === "function") window.updateCheckoutSummary();
-      };
-      window.renderCart();
-    }
   }
 
+  sanitizeCachedCart();
   document.addEventListener("DOMContentLoaded", hardenPOS);
 })();
