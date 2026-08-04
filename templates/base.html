@@ -19,6 +19,7 @@
         {% if user.role == "admin" or user.role == "stock_clerk" %}
           <a href="{% url 'receive_stock' %}">Receive</a>
           <a href="{% url 'product_list' %}">Products</a>
+          <a href="{% url 'stocktake_list' %}">Stocktake</a>
         {% endif %}
         {% if user.role == "admin" %}
           <a href="{% url 'reports' %}">Reports</a>
@@ -58,7 +59,6 @@
         const gain = ctx.createGain();
         osc.connect(gain);
         gain.connect(ctx.destination);
-
         if (type === "error") {
           osc.type = "sawtooth";
           osc.frequency.setValueAtTime(150, ctx.currentTime);
@@ -81,14 +81,9 @@
       const messages = document.querySelectorAll(".message");
       let hasError = false;
       let hasSuccess = false;
-
       messages.forEach(msg => {
-        if (msg.classList.contains("error") || msg.classList.contains("danger")) {
-          hasError = true;
-        } else {
-          hasSuccess = true;
-        }
-
+        if (msg.classList.contains("error") || msg.classList.contains("danger")) hasError = true;
+        else hasSuccess = true;
         setTimeout(() => {
           msg.style.transition = "opacity 0.5s ease, transform 0.5s ease";
           msg.style.opacity = "0";
@@ -96,7 +91,6 @@
           setTimeout(() => msg.remove(), 500);
         }, 4000);
       });
-
       if (hasError) playSound("error");
       else if (hasSuccess) playSound("success");
     });
