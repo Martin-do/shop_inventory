@@ -8,7 +8,7 @@ urlpatterns = [
     path("", views.dashboard, name="dashboard"),
     path("products/", views.product_list, name="product_list"),
     path("products/new/", views.product_create, name="product_create"),
-    path("products/<int:pk>/edit/", views.product_update, name="product_update"),
+    path("products/<int:pk>/edit/", security_views.product_update, name="product_update"),
     path("products/<int:pk>/toggle/", views.product_toggle_active, name="product_toggle_active"),
     path("stock/receive/", views.receive_stock, name="receive_stock"),
     path("pos/", views.pos, name="pos"),
@@ -22,7 +22,6 @@ urlpatterns = [
     path("reports/", security_views.reports, name="reports"),
     path("reports/products.csv", views.export_products_csv, name="export_products_csv"),
     path("reports/sales.csv", security_views.export_sales_csv, name="export_sales_csv"),
-    # Settings & custom admin dashboard
     path("settings/", views.settings_dashboard, name="settings_dashboard"),
     path("settings/backup/", security_views.trigger_manual_backup, name="trigger_manual_backup"),
     path("settings/staff/", views.settings_staff_list, name="settings_staff_list"),
@@ -31,11 +30,9 @@ urlpatterns = [
     path("settings/categories/", views.settings_category_list, name="settings_category_list"),
     path("settings/categories/<int:pk>/edit/", views.settings_category_update, name="settings_category_update"),
     path("settings/categories/<int:pk>/delete/", views.settings_category_delete, name="settings_category_delete"),
-    # Customer Profiles
     path("customers/", views.customer_list, name="customer_list"),
     path("customers/new/", views.customer_create, name="customer_create"),
     path("customers/<int:pk>/edit/", views.customer_update, name="customer_update"),
-    # API Endpoints
     path("api/products/search/", security_views.api_product_search, name="api_product_search"),
     path("api/products/catalog/", security_views.api_active_catalog, name="api_active_catalog"),
     path("api/pos/sync-offline/", api_sync_offline, name="api_sync_offline"),
