@@ -18,10 +18,10 @@ urlpatterns = [
     path("pos/checkout/", views.pos_checkout, name="pos_checkout"),
     path("sales/<int:sale_id>/", views.sale_detail, name="sale_detail"),
     path("sales/<int:sale_id>/receipt/", views.sale_receipt, name="sale_receipt"),
-    path("sales/<int:sale_id>/revert/", views.sale_revert, name="sale_revert"),
+    path("sales/<int:sale_id>/revert/", security_views.sale_revert, name="sale_revert"),
     path("reports/", security_views.reports, name="reports"),
     path("reports/products.csv", views.export_products_csv, name="export_products_csv"),
-    path("reports/sales.csv", views.export_sales_csv, name="export_sales_csv"),
+    path("reports/sales.csv", security_views.export_sales_csv, name="export_sales_csv"),
     # Settings & custom admin dashboard
     path("settings/", views.settings_dashboard, name="settings_dashboard"),
     path("settings/backup/", security_views.trigger_manual_backup, name="trigger_manual_backup"),
