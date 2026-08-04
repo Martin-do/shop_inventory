@@ -1,5 +1,7 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}{{ session.name }}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'inventory/stocktake.css' %}?v=20260804-1">{% endblock %}
 {% block page_class %}page-stocktake{% endblock %}
 {% block content %}
 <section class="stocktake-hero">
@@ -9,20 +11,13 @@
       <h1>{{ session.name }}</h1>
       <span class="status-pill status-{{ session.status }}">{{ session.get_status_display }}</span>
     </div>
-    <p class="stocktake-subtitle">
-      Coordinate teams, monitor zone progress, review exceptions and apply the approved opening balance once.
-    </p>
+    <p class="stocktake-subtitle">Coordinate teams, monitor zone progress, review exceptions and apply the approved opening balance once.</p>
   </div>
-
   {% if user.role == 'admin' %}
   <div class="stocktake-primary-actions">
-    {% if session.status == 'draft' %}
-      <form method="post" action="{% url 'stocktake_start' session.id %}">{% csrf_token %}<button class="button primary">Start counting</button></form>
-    {% elif session.status == 'counting' %}
-      <form method="post" action="{% url 'stocktake_submit_review' session.id %}">{% csrf_token %}<button class="button primary">Submit for review</button></form>
-    {% elif session.status == 'review' %}
-      <form method="post" action="{% url 'stocktake_apply' session.id %}">{% csrf_token %}<button class="button primary" {% if unapproved_count %}disabled title="Approve every count before applying"{% endif %}>Apply opening inventory</button></form>
-    {% endif %}
+    {% if session.status == 'draft' %}<form method="post" action="{% url 'stocktake_start' session.id %}">{% csrf_token %}<button class="button primary">Start counting</button></form>
+    {% elif session.status == 'counting' %}<form method="post" action="{% url 'stocktake_submit_review' session.id %}">{% csrf_token %}<button class="button primary">Submit for review</button></form>
+    {% elif session.status == 'review' %}<form method="post" action="{% url 'stocktake_apply' session.id %}">{% csrf_token %}<button class="button primary" {% if unapproved_count %}disabled title="Approve every count before applying"{% endif %}>Apply opening inventory</button></form>{% endif %}
   </div>
   {% endif %}
 </section>
@@ -40,52 +35,34 @@
     <div><h2>Zones and teams</h2><p>Assign staff while the session is in draft, then open each zone for counting.</p></div>
     <span class="section-count">{{ zones|length }} zone{{ zones|length|pluralize }}</span>
   </div>
-
   <div class="zone-card-grid">
     {% for zone in zones %}
     <article class="zone-card {% if zone.is_complete %}zone-complete{% endif %}">
       <header class="zone-card-header">
-        <div>
-          <span class="zone-eyebrow">Zone {{ forloop.counter }}</span>
-          <h3>{{ zone.name }}</h3>
-          {% if zone.description %}<p>{{ zone.description }}</p>{% endif %}
-        </div>
+        <div><span class="zone-eyebrow">Zone {{ forloop.counter }}</span><h3>{{ zone.name }}</h3>{% if zone.description %}<p>{{ zone.description }}</p>{% endif %}</div>
         <span class="zone-state">{% if zone.is_complete %}✓ Complete{% else %}Open{% endif %}</span>
       </header>
-
       <div class="zone-card-stats">
         <div><strong>{{ zone.item_count }}</strong><span>Product count{{ zone.item_count|pluralize }}</span></div>
         <div><strong>{{ zone.assigned_users.count }}</strong><span>Assigned staff</span></div>
       </div>
-
       <div class="team-summary">
         <span class="team-summary-label">Current team</span>
-        <div class="team-chips">
-          {% for person in zone.assigned_users.all %}<span class="team-chip">{{ person.username }}</span>{% empty %}<span class="team-empty">No staff assigned</span>{% endfor %}
-        </div>
+        <div class="team-chips">{% for person in zone.assigned_users.all %}<span class="team-chip">{{ person.username }}</span>{% empty %}<span class="team-empty">No staff assigned</span>{% endfor %}</div>
       </div>
-
       {% if user.role == 'admin' and session.status == 'draft' %}
       <form class="team-assignment-form" method="post" action="{% url 'stocktake_assign_zone' zone.id %}">
         {% csrf_token %}
         <label for="zone-team-{{ zone.id }}">Assign counting team</label>
-        <select id="zone-team-{{ zone.id }}" name="users" multiple size="4">
-          {% for person in staff %}<option value="{{ person.id }}" {% if person in zone.assigned_users.all %}selected{% endif %}>{{ person.username }} — {{ person.role }}</option>{% endfor %}
-        </select>
+        <select id="zone-team-{{ zone.id }}" name="users" multiple size="4">{% for person in staff %}<option value="{{ person.id }}" {% if person in zone.assigned_users.all %}selected{% endif %}>{{ person.username }} — {{ person.role }}</option>{% endfor %}</select>
         <small>Hold Ctrl on Windows or Command on Mac to choose more than one person.</small>
         <button class="button wide">Save team assignment</button>
       </form>
       {% endif %}
-
-      {% if not zone.is_complete and session.status == 'counting' %}
-        <a class="button primary wide zone-count-button" href="{% url 'stocktake_count_zone' zone.id %}">Open counting workspace</a>
-      {% elif zone.is_complete %}
-        <div class="zone-complete-note">This zone has been submitted by {{ zone.completed_by|default:'the assigned team' }}.</div>
-      {% endif %}
+      {% if not zone.is_complete and session.status == 'counting' %}<a class="button primary wide zone-count-button" href="{% url 'stocktake_count_zone' zone.id %}">Open counting workspace</a>
+      {% elif zone.is_complete %}<div class="zone-complete-note">This zone has been submitted by {{ zone.completed_by|default:'the assigned team' }}.</div>{% endif %}
     </article>
-    {% empty %}
-      <div class="empty-state"><h3>No zones yet</h3><p>Add physical shop areas before starting the stocktake.</p></div>
-    {% endfor %}
+    {% empty %}<div class="empty-state"><h3>No zones yet</h3><p>Add physical shop areas before starting the stocktake.</p></div>{% endfor %}
   </div>
 </section>
 
