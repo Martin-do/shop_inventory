@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import audit_views, security_views, stocktake_views, views
+from .hardened_stocktake_views import stocktake_quick_product, stocktake_save_count
 from .hardened_sync import api_sync_offline
 
 
@@ -19,8 +20,8 @@ urlpatterns = [
     path("stocktakes/<int:session_id>/apply/", stocktake_views.stocktake_apply, name="stocktake_apply"),
     path("stocktakes/zones/<int:zone_id>/assign/", stocktake_views.stocktake_assign_zone, name="stocktake_assign_zone"),
     path("stocktakes/zones/<int:zone_id>/count/", stocktake_views.stocktake_count_zone, name="stocktake_count_zone"),
-    path("stocktakes/zones/<int:zone_id>/save/", stocktake_views.stocktake_save_count, name="stocktake_save_count"),
-    path("stocktakes/zones/<int:zone_id>/quick-product/", stocktake_views.stocktake_quick_product, name="stocktake_quick_product"),
+    path("stocktakes/zones/<int:zone_id>/save/", stocktake_save_count, name="stocktake_save_count"),
+    path("stocktakes/zones/<int:zone_id>/quick-product/", stocktake_quick_product, name="stocktake_quick_product"),
     path("stocktakes/zones/<int:zone_id>/complete/", stocktake_views.stocktake_complete_zone, name="stocktake_complete_zone"),
     path("stocktakes/counts/<int:count_id>/review/", stocktake_views.stocktake_review_count, name="stocktake_review_count"),
     path("pos/", views.pos, name="pos"),
