@@ -42,6 +42,13 @@ class GranularPermissionTests(TestCase):
         self.assertContains(response, "Individual permissions")
         self.assertContains(response, "Apply opening inventory")
 
+    def test_permission_editor_explains_each_capability(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("settings_staff_update", args=[self.cashier.pk]))
+        self.assertContains(response, 'class="permission-info"', html=False)
+        self.assertContains(response, "Allows cancelling a completed sale and restoring its sold quantities to stock.", html=False)
+        self.assertContains(response, "Hover over, focus, or tap", html=False)
+
     def test_non_superuser_cannot_grant_permission_they_lack(self):
         manager = User.objects.create_user("manager", password="pw", is_staff=True)
         UserProfile.objects.create(user=manager, role=UserProfile.ROLE_ADMIN)
