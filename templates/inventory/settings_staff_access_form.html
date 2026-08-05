@@ -2,7 +2,7 @@
 {% block title %}{{ title }}{% endblock %}
 {% block extra_head %}
 <style>
-.access-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px}.access-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}.identity-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.permission-section{border:1px solid var(--line);border-radius:12px;margin-top:14px;overflow:hidden}.permission-section header{align-items:center;background:#f8faf9;display:flex;justify-content:space-between;padding:12px 14px}.permission-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0}.permission-item{align-items:flex-start;border-top:1px solid #edf0ee;display:flex;gap:10px;padding:12px 14px}.permission-item input{margin-top:3px;min-height:auto;width:auto}.permission-item.sensitive{background:#fff8ed}.permission-item strong{display:block}.permission-item small{margin-top:2px}.access-summary{position:sticky;top:20px}.summary-count{font-size:36px;font-weight:800}.preset-help{background:#eef7f4;border-radius:10px;padding:12px}.section-tools{display:flex;gap:8px}.section-tools button{font-size:12px;padding:6px 8px}@media(max-width:900px){.access-layout{grid-template-columns:1fr}.access-summary{position:static}}@media(max-width:680px){.identity-grid,.permission-list{grid-template-columns:1fr}}
+.access-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px}.access-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}.identity-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.permission-section{border:1px solid var(--line);border-radius:12px;margin-top:14px;overflow:visible}.permission-section header{align-items:center;background:#f8faf9;display:flex;justify-content:space-between;padding:12px 14px;border-radius:12px 12px 0 0}.permission-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0}.permission-item{align-items:flex-start;border-top:1px solid #edf0ee;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;padding:12px 14px;position:relative}.permission-item input{margin-top:3px;min-height:auto;width:auto}.permission-item.sensitive{background:#fff8ed}.permission-label{cursor:pointer}.permission-label strong{display:block}.permission-label small{margin-top:2px}.access-summary{position:sticky;top:20px}.summary-count{font-size:36px;font-weight:800}.preset-help{background:#eef7f4;border-radius:10px;padding:12px}.section-tools{display:flex;gap:8px}.section-tools button{font-size:12px;padding:6px 8px}.permission-info{align-items:center;background:#eef4f2;border:1px solid #cad8d3;border-radius:50%;color:#164f44;cursor:pointer;display:inline-flex;font-size:12px;font-weight:800;height:24px;justify-content:center;line-height:1;padding:0;width:24px}.permission-info:hover,.permission-info:focus-visible,.permission-info[aria-expanded="true"]{background:#164f44;color:#fff;outline:none}.permission-tooltip{background:#102b26;border-radius:9px;box-shadow:0 10px 28px rgba(0,0,0,.2);color:#fff;font-size:13px;font-weight:400;line-height:1.45;max-width:300px;padding:10px 12px;position:absolute;right:10px;top:44px;width:max-content;z-index:20}.permission-tooltip[hidden]{display:none}.permission-tooltip::before{border-bottom:7px solid #102b26;border-left:7px solid transparent;border-right:7px solid transparent;content:"";position:absolute;right:10px;top:-7px}.permission-item:hover .permission-tooltip[data-hover="true"],.permission-item:focus-within .permission-tooltip[data-hover="true"]{display:block}.tooltip-help{color:var(--muted);font-size:13px;margin:0 0 8px}@media(max-width:900px){.access-layout{grid-template-columns:1fr}.access-summary{position:static}}@media(max-width:680px){.identity-grid,.permission-list{grid-template-columns:1fr}.permission-tooltip{left:12px;max-width:calc(100vw - 64px);right:auto;top:46px;width:auto}.permission-tooltip::before{left:auto;right:10px}}
 </style>
 {% endblock %}
 {% block content %}
@@ -30,16 +30,19 @@
 
     <section class="access-card" style="margin-top:18px">
       <h2>Individual permissions</h2>
+      <p class="tooltip-help">Hover over, focus, or tap the <strong>i</strong> icon to see exactly what each permission allows.</p>
       {{ form.permissions.errors }}
       {% for section, entries in permission_sections %}
       <div class="permission-section" data-section>
         <header><strong>{{ section }}</strong><div class="section-tools"><button type="button" data-check-all>Select all</button><button type="button" data-clear-all>Clear</button></div></header>
         <div class="permission-list">
           {% for entry in entries %}
-          <label class="permission-item {% if entry.sensitive %}sensitive{% endif %}">
-            <input type="checkbox" name="permissions" value="{{ entry.permission.pk }}" data-code="{{ entry.codename }}" {% if entry.permission.pk|stringformat:'s' in form.permissions.value %}checked{% endif %}>
-            <span><strong>{{ entry.label }}{% if entry.sensitive %} ⚠{% endif %}</strong><small>{{ entry.codename }}</small></span>
-          </label>
+          <div class="permission-item {% if entry.sensitive %}sensitive{% endif %}">
+            <input id="permission-{{ entry.permission.pk }}" type="checkbox" name="permissions" value="{{ entry.permission.pk }}" data-code="{{ entry.codename }}" {% if entry.permission.pk|stringformat:'s' in form.permissions.value %}checked{% endif %}>
+            <label class="permission-label" for="permission-{{ entry.permission.pk }}"><strong>{{ entry.label }}{% if entry.sensitive %} ⚠{% endif %}</strong><small>{{ entry.codename }}</small></label>
+            <button type="button" class="permission-info" aria-label="Explain {{ entry.label }}" aria-expanded="false" aria-controls="permission-help-{{ entry.permission.pk }}">i</button>
+            <div class="permission-tooltip" id="permission-help-{{ entry.permission.pk }}" role="tooltip" data-hover="true" hidden>{{ entry.description }}</div>
+          </div>
           {% endfor %}
         </div>
       </div>
@@ -70,7 +73,20 @@
  function refresh(){const selected=boxes.filter(b=>b.checked);count.textContent=selected.length;summary.textContent=selected.length?`${selected.length} capabilities will be available to this account.`:'No permissions selected.';}
  preset?.addEventListener('change',()=>{const codes=presets[preset.value];if(!codes||preset.value==='custom')return;boxes.forEach(box=>box.checked=codes.includes(box.dataset.code));refresh();});
  document.querySelectorAll('[data-section]').forEach(section=>{section.querySelector('[data-check-all]').onclick=()=>{section.querySelectorAll('input[name=permissions]').forEach(b=>b.checked=true);refresh();};section.querySelector('[data-clear-all]').onclick=()=>{section.querySelectorAll('input[name=permissions]').forEach(b=>b.checked=false);refresh();};});
- boxes.forEach(box=>box.addEventListener('change',refresh));refresh();
+ boxes.forEach(box=>box.addEventListener('change',refresh));
+ const infoButtons=[...document.querySelectorAll('.permission-info')];
+ function closeTooltips(except=null){infoButtons.forEach(button=>{if(button===except)return;button.setAttribute('aria-expanded','false');const tip=document.getElementById(button.getAttribute('aria-controls'));if(tip){tip.hidden=true;tip.dataset.hover='true';}});}
+ infoButtons.forEach(button=>{
+   const tip=document.getElementById(button.getAttribute('aria-controls'));
+   button.addEventListener('click',event=>{event.stopPropagation();const opening=button.getAttribute('aria-expanded')!=='true';closeTooltips(opening?button:null);button.setAttribute('aria-expanded',String(opening));if(tip){tip.hidden=!opening;tip.dataset.hover=opening?'false':'true';}});
+   button.addEventListener('mouseenter',()=>{if(button.getAttribute('aria-expanded')!=='true'&&tip)tip.hidden=false;});
+   button.addEventListener('mouseleave',()=>{if(button.getAttribute('aria-expanded')!=='true'&&tip)tip.hidden=true;});
+   button.addEventListener('focus',()=>{if(button.getAttribute('aria-expanded')!=='true'&&tip)tip.hidden=false;});
+   button.addEventListener('blur',()=>{if(button.getAttribute('aria-expanded')!=='true'&&tip)tip.hidden=true;});
+ });
+ document.addEventListener('click',event=>{if(!event.target.closest('.permission-item'))closeTooltips();});
+ document.addEventListener('keydown',event=>{if(event.key==='Escape')closeTooltips();});
+ refresh();
 })();
 </script>
 {% endblock %}
