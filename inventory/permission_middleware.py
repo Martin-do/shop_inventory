@@ -29,9 +29,6 @@ class GranularPermissionMiddleware:
         return any(has_access(user, codename) for codename in STOCKTAKE_ENTRY_PERMISSIONS)
 
     def _has_required_access(self, user, url_name, codename):
-        # Operational stocktake permissions imply access to the stocktake list and
-        # detail pages. Zone assignment and action-specific permissions still
-        # control what the user can see and do after entering the module.
         if url_name in {"stocktake_list", "stocktake_detail"}:
             return self._can_enter_stocktake(user)
         return has_access(user, codename)
@@ -61,6 +58,8 @@ class GranularPermissionMiddleware:
                 match = None
             url_name = getattr(match, "url_name", "")
             codename = URL_PERMISSION_MAP.get(url_name)
+            if url_name == "stocktake_product_search":
+                codename = "count_assigned_zones"
             if codename and not self._has_required_access(request.user, url_name, codename):
                 if request.path_info.startswith("/api/") or request.path_info.startswith("/stocktakes/api/"):
                     return JsonResponse(
