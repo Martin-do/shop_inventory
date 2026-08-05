@@ -1,7 +1,8 @@
 from django.contrib import messages
 from django.shortcuts import redirect
+from django.urls import Resolver404, resolve
 
-from .access_control import permission_for_request, permission_name
+from .access_control import URL_PERMISSION_MAP, permission_name
 
 
 class GranularPermissionMiddleware:
@@ -12,10 +13,14 @@ class GranularPermissionMiddleware:
 
     def __call__(self, request):
         if request.user.is_authenticated:
-            codename = permission_for_request(request)
+            try:
+                match = resolve(request.path_info)
+            except Resolver404:
+                match = None
+            codename = URL_PERMISSION_MAP.get(getattr(match, "url_name", ""))
             if codename and not (request.user.is_superuser or request.user.has_perm(permission_name(codename))):
                 messages.error(request, "Access denied. Your account does not have permission for that action.")
-                if request.resolver_match and request.resolver_match.url_name == "dashboard":
+                if getattr(match, "url_name", "") == "dashboard":
                     return redirect("login")
                 return redirect("dashboard")
         return self.get_response(request)
