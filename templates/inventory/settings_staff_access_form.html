@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block extra_head %}
+<style>
+.access-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px}.access-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}.identity-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.permission-section{border:1px solid var(--line);border-radius:12px;margin-top:14px;overflow:hidden}.permission-section header{align-items:center;background:#f8faf9;display:flex;justify-content:space-between;padding:12px 14px}.permission-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0}.permission-item{align-items:flex-start;border-top:1px solid #edf0ee;display:flex;gap:10px;padding:12px 14px}.permission-item input{margin-top:3px;min-height:auto;width:auto}.permission-item.sensitive{background:#fff8ed}.permission-item strong{display:block}.permission-item small{margin-top:2px}.access-summary{position:sticky;top:20px}.summary-count{font-size:36px;font-weight:800}.preset-help{background:#eef7f4;border-radius:10px;padding:12px}.section-tools{display:flex;gap:8px}.section-tools button{font-size:12px;padding:6px 8px}@media(max-width:900px){.access-layout{grid-template-columns:1fr}.access-summary{position:static}}@media(max-width:680px){.identity-grid,.permission-list{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+{% block content %}
+<section class="heading"><div><h1>{{ title }}</h1><p style="color:var(--muted)">Choose a preset, then fine-tune exactly what this staff member can do.</p></div><a class="button" href="{% url 'settings_staff_list' %}">Back to staff</a></section>
+<form method="post" id="staff-access-form">{% csrf_token %}{{ form.non_field_errors }}
+<div class="access-layout">
+  <div>
+    <section class="access-card">
+      <h2>Staff identity</h2>
+      <div class="identity-grid">
+        <label>Username{{ form.username }}{{ form.username.errors }}</label>
+        <label>Email{{ form.email }}{{ form.email.errors }}</label>
+        <label>First name{{ form.first_name }}{{ form.first_name.errors }}</label>
+        <label>Last name{{ form.last_name }}{{ form.last_name.errors }}</label>
+        <label>Password{{ form.password }}<small>{{ form.password.help_text }}</small>{{ form.password.errors }}</label>
+        <label>Account status<span style="display:flex;align-items:center;gap:8px;font-weight:normal">{{ form.is_active }} Active account</span></label>
+      </div>
+    </section>
+
+    <section class="access-card" style="margin-top:18px">
+      <h2>Access preset</h2>
+      <label>{{ form.preset.label }}{{ form.preset }}<small>{{ form.preset.help_text }}</small>{{ form.preset.errors }}</label>
+      <div class="preset-help">The preset is only a starting point. Every checkbox below remains editable before saving.</div>
+    </section>
+
+    <section class="access-card" style="margin-top:18px">
+      <h2>Individual permissions</h2>
+      {{ form.permissions.errors }}
+      {% for section, entries in permission_sections %}
+      <div class="permission-section" data-section>
+        <header><strong>{{ section }}</strong><div class="section-tools"><button type="button" data-check-all>Select all</button><button type="button" data-clear-all>Clear</button></div></header>
+        <div class="permission-list">
+          {% for entry in entries %}
+          <label class="permission-item {% if entry.sensitive %}sensitive{% endif %}">
+            <input type="checkbox" name="permissions" value="{{ entry.permission.pk }}" data-code="{{ entry.codename }}" {% if entry.permission.pk|stringformat:'s' in form.permissions.value %}checked{% endif %}>
+            <span><strong>{{ entry.label }}{% if entry.sensitive %} ⚠{% endif %}</strong><small>{{ entry.codename }}</small></span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </section>
+  </div>
+
+  <aside class="access-card access-summary">
+    <span style="color:var(--muted);font-weight:700">Selected access</span>
+    <div class="summary-count" id="permission-count">0</div>
+    <p id="permission-summary">No permissions selected.</p>
+    <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+    <p><strong>Security note</strong></p><p style="color:var(--muted)">Orange permissions can affect money, stock balances, staff access, or audit records.</p>
+    <button class="button primary wide">Save staff access</button>
+  </aside>
+</div>
+</form>
+<script>
+(() => {
+ const presets = {
+  cashier:['access_pos','create_sale','view_own_sales','view_customers','create_customers'],
+  senior_cashier:['access_pos','create_sale','apply_discount','view_own_sales','view_all_sales','reverse_sale','view_customers','create_customers','edit_customers'],
+  inventory_counter:['view_products','view_stock','view_assigned_stocktakes','count_assigned_zones','create_products_during_stocktake','complete_stocktake_zones'],
+  storekeeper:['view_products','create_products','edit_products','view_stock','receive_stock','adjust_stock','view_stock_movements','manage_categories','view_assigned_stocktakes','count_assigned_zones','create_products_during_stocktake','complete_stocktake_zones'],
+  inventory_supervisor:['view_products','create_products','edit_products','change_selling_price','view_cost_price','change_cost_price','view_stock','receive_stock','adjust_stock','view_stock_movements','manage_categories','view_assigned_stocktakes','count_assigned_zones','create_products_during_stocktake','complete_stocktake_zones','view_all_stocktake_zones','create_stocktakes','assign_stocktake_teams','start_stocktakes','review_stocktake_counts']
+ };
+ const boxes=[...document.querySelectorAll('input[name=permissions]')], count=document.getElementById('permission-count'), summary=document.getElementById('permission-summary'), preset=document.getElementById('id_preset');
+ function refresh(){const selected=boxes.filter(b=>b.checked);count.textContent=selected.length;summary.textContent=selected.length?`${selected.length} capabilities will be available to this account.`:'No permissions selected.';}
+ preset?.addEventListener('change',()=>{const codes=presets[preset.value];if(!codes||preset.value==='custom')return;boxes.forEach(box=>box.checked=codes.includes(box.dataset.code));refresh();});
+ document.querySelectorAll('[data-section]').forEach(section=>{section.querySelector('[data-check-all]').onclick=()=>{section.querySelectorAll('input[name=permissions]').forEach(b=>b.checked=true);refresh();};section.querySelector('[data-clear-all]').onclick=()=>{section.querySelectorAll('input[name=permissions]').forEach(b=>b.checked=false);refresh();};});
+ boxes.forEach(box=>box.addEventListener('change',refresh));refresh();
+})();
+</script>
+{% endblock %}
