@@ -3,6 +3,7 @@ from django.urls import path
 from . import audit_views, security_views, stocktake_views, views
 from .hardened_stocktake_views import stocktake_quick_product, stocktake_save_count
 from .hardened_sync import api_sync_offline
+from .stocktake_search import stocktake_product_search
 
 
 urlpatterns = [
@@ -24,6 +25,7 @@ urlpatterns = [
     path("stocktakes/zones/<int:zone_id>/quick-product/", stocktake_quick_product, name="stocktake_quick_product"),
     path("stocktakes/zones/<int:zone_id>/complete/", stocktake_views.stocktake_complete_zone, name="stocktake_complete_zone"),
     path("stocktakes/counts/<int:count_id>/review/", stocktake_views.stocktake_review_count, name="stocktake_review_count"),
+    path("stocktakes/api/products/search/", stocktake_product_search, name="stocktake_product_search"),
     path("pos/", views.pos, name="pos"),
     path("pos/add/", views.pos_add, name="pos_add"),
     path("pos/remove/<str:barcode>/", views.pos_remove, name="pos_remove"),
