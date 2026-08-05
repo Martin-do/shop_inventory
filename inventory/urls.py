@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import audit_views, security_views, stocktake_views, views
+from . import audit_views, security_views, staff_access_views, stocktake_views, views
 from .hardened_stocktake_views import stocktake_quick_product, stocktake_save_count
 from .hardened_sync import api_sync_offline
 from .stocktake_search import stocktake_product_search
@@ -42,9 +42,9 @@ urlpatterns = [
     path("history/<int:pk>/", audit_views.audit_detail, name="audit_detail"),
     path("settings/", views.settings_dashboard, name="settings_dashboard"),
     path("settings/backup/", security_views.trigger_manual_backup, name="trigger_manual_backup"),
-    path("settings/staff/", views.settings_staff_list, name="settings_staff_list"),
-    path("settings/staff/new/", views.settings_staff_create, name="settings_staff_create"),
-    path("settings/staff/<int:pk>/edit/", views.settings_staff_update, name="settings_staff_update"),
+    path("settings/staff/", staff_access_views.staff_list, name="settings_staff_list"),
+    path("settings/staff/new/", staff_access_views.staff_create, name="settings_staff_create"),
+    path("settings/staff/<int:pk>/edit/", staff_access_views.staff_update, name="settings_staff_update"),
     path("settings/categories/", views.settings_category_list, name="settings_category_list"),
     path("settings/categories/<int:pk>/edit/", views.settings_category_update, name="settings_category_update"),
     path("settings/categories/<int:pk>/delete/", views.settings_category_delete, name="settings_category_delete"),
