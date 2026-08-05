@@ -98,6 +98,24 @@ PRESETS = {
     "custom": {"label": "Custom", "permissions": set()},
 }
 
+# Used only for accounts that have never been configured through the granular editor.
+# This preserves the application's historical behaviour during migration and in old tests.
+LEGACY_ROLE_PERMISSIONS = {
+    "cashier": {
+        "access_pos", "create_sale", "apply_discount", "view_own_sales", "view_all_sales",
+        "view_products", "view_customers", "create_customers", "edit_customers",
+        "sync_offline_sales",
+    },
+    "stock_clerk": {
+        "view_products", "create_products", "edit_products", "change_selling_price",
+        "view_cost_price", "change_cost_price", "toggle_products", "manage_categories",
+        "view_stock", "receive_stock", "adjust_stock", "view_stock_movements", "export_stock",
+        "view_assigned_stocktakes", "count_assigned_zones", "create_products_during_stocktake",
+        "complete_stocktake_zones", "view_all_stocktake_zones",
+    },
+    "admin": set(ALL_CODENAMES),
+}
+
 SENSITIVE_PERMISSIONS = {
     "reverse_sale", "adjust_stock", "change_selling_price", "change_cost_price",
     "view_profit_information", "apply_stocktakes", "assign_permissions", "view_audit_history",
@@ -131,8 +149,29 @@ def permission_for_request(request):
     return URL_PERMISSION_MAP.get(getattr(match, "url_name", ""))
 
 
+def is_granularly_configured(user):
+    """Return True once a user has an explicit permission selection or preset marker."""
+    if not user or not user.is_authenticated:
+        return False
+    preset_names = [data["label"] for data in PRESETS.values()]
+    if user.groups.filter(name__in=preset_names).exists():
+        return True
+    return user.user_permissions.filter(
+        content_type__app_label="inventory", codename__in=ALL_CODENAMES
+    ).exists()
+
+
 def has_access(user, codename):
-    return bool(user and user.is_authenticated and (user.is_superuser or user.has_perm(permission_name(codename))))
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    if user.has_perm(permission_name(codename)):
+        return True
+    if is_granularly_configured(user):
+        return False
+    role = getattr(user, "role", "cashier")
+    return codename in LEGACY_ROLE_PERMISSIONS.get(role, set())
 
 
 def permission_required(codename):
