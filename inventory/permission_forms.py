@@ -89,15 +89,19 @@ class StaffAccessForm(forms.ModelForm):
             selected = self.cleaned_data.get("permissions")
             selected_codes = {permission.codename for permission in selected}
             user.groups.clear()
-            if preset != "custom" and selected_codes == set(PRESETS[preset]["permissions"]):
+
+            if preset == "custom":
+                # The zero-permission case needs an explicit marker so it cannot be
+                # mistaken for an unmigrated legacy administrator account.
+                group, _ = Group.objects.get_or_create(name=PRESETS["custom"]["label"])
+                group.permissions.clear()
+                user.groups.add(group)
+            elif selected_codes == set(PRESETS[preset]["permissions"]):
                 group = Group.objects.filter(name=PRESETS[preset]["label"]).first()
                 if group:
                     user.groups.add(group)
-            elif not selected_codes:
-                # A zero-access account still needs a marker so it is not mistaken for an unmigrated legacy account.
-                group = Group.objects.filter(name=PRESETS["custom"]["label"]).first()
-                if group:
-                    user.groups.add(group)
-            # Exact direct permissions are authoritative; group membership is a preset/configuration marker.
+
+            # Exact direct permissions are authoritative. Preset group membership is
+            # descriptive and is only retained when the selection exactly matches it.
             user.user_permissions.set(selected)
         return user
