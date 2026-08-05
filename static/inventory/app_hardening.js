@@ -165,6 +165,136 @@
     }
   }
 
+  function enhanceStocktakeProductField() {
+    const input = document.getElementById("barcode");
+    const lookupButton = document.getElementById("lookup");
+    if (!input || !lookupButton || !window.location.pathname.includes("/stocktakes/zones/")) return;
+
+    input.inputMode = "search";
+    input.placeholder = "Scan barcode or search product name";
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-expanded", "false");
+
+    const host = input.closest(".lookup-row") || input.parentElement;
+    if (!host) return;
+    host.style.position = "relative";
+
+    const suggestions = document.createElement("div");
+    suggestions.id = "stocktake-product-suggestions";
+    suggestions.setAttribute("role", "listbox");
+    Object.assign(suggestions.style, {
+      display: "none",
+      position: "absolute",
+      top: "calc(100% + 6px)",
+      left: "0",
+      right: "0",
+      zIndex: "50",
+      maxHeight: "320px",
+      overflowY: "auto",
+      background: "#fff",
+      border: "1px solid var(--line, #d9ded7)",
+      borderRadius: "10px",
+      boxShadow: "0 12px 30px rgba(16,32,29,.16)"
+    });
+    host.appendChild(suggestions);
+    input.setAttribute("aria-controls", suggestions.id);
+
+    let timer = null;
+    let controller = null;
+
+    function hideSuggestions() {
+      suggestions.style.display = "none";
+      input.setAttribute("aria-expanded", "false");
+    }
+
+    function selectProduct(product) {
+      input.value = cleanText(product.barcode);
+      input.dataset.selectedProductId = String(product.id || "");
+      hideSuggestions();
+      lookupButton.click();
+    }
+
+    function renderResults(results) {
+      suggestions.replaceChildren();
+      if (!Array.isArray(results) || results.length === 0) {
+        const empty = document.createElement("div");
+        empty.textContent = "No matching product. Use ‘Add a new product’ if this item is new.";
+        Object.assign(empty.style, { padding: "14px", color: "#667085", fontSize: "14px" });
+        suggestions.appendChild(empty);
+      } else {
+        results.forEach((product) => {
+          const option = document.createElement("button");
+          option.type = "button";
+          option.setAttribute("role", "option");
+          option.className = "stocktake-search-option";
+          Object.assign(option.style, {
+            width: "100%",
+            border: "0",
+            borderBottom: "1px solid #eef1ef",
+            borderRadius: "0",
+            background: "#fff",
+            padding: "12px 14px",
+            textAlign: "left",
+            cursor: "pointer"
+          });
+
+          const title = document.createElement("strong");
+          title.textContent = cleanText(product.name) || "Unnamed product";
+          title.style.display = "block";
+
+          const details = document.createElement("span");
+          const descriptors = [product.variant, product.category].filter(Boolean).map(cleanText);
+          details.textContent = `${descriptors.join(" · ")}${descriptors.length ? " · " : ""}${cleanText(product.barcode)} · ₦${Number(product.selling_price || 0).toLocaleString()}`;
+          Object.assign(details.style, { display: "block", color: "#667085", fontSize: "13px", marginTop: "4px" });
+
+          option.append(title, details);
+          option.addEventListener("click", () => selectProduct(product));
+          suggestions.appendChild(option);
+        });
+      }
+      suggestions.style.display = "block";
+      input.setAttribute("aria-expanded", "true");
+    }
+
+    async function searchProducts(query) {
+      if (controller) controller.abort();
+      controller = new AbortController();
+      try {
+        const response = await fetch(`/stocktakes/api/products/search/?q=${encodeURIComponent(query)}`, {
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error("Search failed");
+        const payload = await response.json();
+        renderResults(payload.results || []);
+      } catch (error) {
+        if (error.name !== "AbortError") hideSuggestions();
+      }
+    }
+
+    input.addEventListener("input", () => {
+      delete input.dataset.selectedProductId;
+      window.clearTimeout(timer);
+      const query = input.value.trim();
+      if (query.length < 2) {
+        hideSuggestions();
+        return;
+      }
+      timer = window.setTimeout(() => searchProducts(query), 220);
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") hideSuggestions();
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!host.contains(event.target)) hideSuggestions();
+    });
+  }
+
   sanitizeCachedCart();
-  document.addEventListener("DOMContentLoaded", hardenPOS);
+  document.addEventListener("DOMContentLoaded", () => {
+    hardenPOS();
+    enhanceStocktakeProductField();
+  });
 })();
