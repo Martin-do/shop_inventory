@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}History Entry{% endblock %}
+{% block content %}
+<section class="heading"><div><h1>History Entry #{{ log.pk }}</h1><p>{{ log.summary }}</p></div><a class="button" href="{% url 'audit_history' %}">Back to History</a></section>
+<section class="panel" style="margin-bottom:16px;">
+  <dl style="display:grid; grid-template-columns:180px 1fr; gap:10px;">
+    <dt>When</dt><dd>{{ log.created_at|date:"Y-m-d H:i:s" }}</dd>
+    <dt>Staff</dt><dd>{{ log.actor_name|default:"System" }}</dd>
+    <dt>Action</dt><dd>{{ log.get_action_display }}</dd>
+    <dt>Object</dt><dd>{{ log.object_type }} #{{ log.object_id }} — {{ log.object_label }}</dd>
+    <dt>Request</dt><dd>{{ log.request_method }} {{ log.request_path }}</dd>
+    <dt>IP address</dt><dd>{{ log.ip_address|default:"—" }}</dd>
+    <dt>User agent</dt><dd style="word-break:break-word;">{{ log.user_agent|default:"—" }}</dd>
+  </dl>
+</section>
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+  <section class="panel"><h3>Before</h3><pre style="white-space:pre-wrap; word-break:break-word;">{{ log.before|pprint }}</pre></section>
+  <section class="panel"><h3>After</h3><pre style="white-space:pre-wrap; word-break:break-word;">{{ log.after|pprint }}</pre></section>
+</div>
+<section class="panel" style="margin-top:16px;"><h3>Metadata and changed fields</h3><pre style="white-space:pre-wrap; word-break:break-word;">{{ log.metadata|pprint }}</pre></section>
+{% endblock %}

@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block extra_head %}
+<style>
+.access-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px}.access-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}.identity-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.permission-section{border:1px solid var(--line);border-radius:12px;margin-top:14px;overflow:hidden}.permission-section header{align-items:center;background:#f8faf9;display:flex;justify-content:space-between;padding:12px 14px}.permission-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.permission-item{align-items:flex-start;border-top:1px solid #edf0ee;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;padding:12px 14px}.permission-item input{margin-top:3px;min-height:auto;width:auto}.permission-item.sensitive{background:#fff8ed}.permission-label{cursor:pointer}.permission-label strong{display:block}.permission-label small{margin-top:2px}.access-summary{position:sticky;top:20px}.summary-count{font-size:36px;font-weight:800}.preset-help{background:#eef7f4;border-radius:10px;padding:12px}.section-tools{display:flex;gap:8px}.section-tools button{font-size:12px;padding:6px 8px}.permission-info{align-items:center;background:#f3f7f5;border:1px solid #cad8d3;border-radius:50%;color:#35675e;cursor:pointer;display:inline-flex;font-size:11px;font-weight:800;height:22px;justify-content:center;line-height:1;padding:0;width:22px}.permission-info:hover,.permission-info:focus-visible,.permission-info[aria-expanded="true"]{background:#164f44;color:#fff;outline:none}.permission-popover{background:#fff;border:1px solid #cfdad6;border-radius:10px;box-shadow:0 12px 30px rgba(16,43,38,.18);color:#24332f;font-size:13px;line-height:1.45;max-width:280px;padding:11px 13px;position:fixed;width:max-content;z-index:1000}.permission-popover[hidden]{display:none}.permission-popover strong{color:#102b26;display:block;margin-bottom:3px}.tooltip-help{color:var(--muted);font-size:13px;margin:0 0 8px}@media(max-width:900px){.access-layout{grid-template-columns:1fr}.access-summary{position:static}}@media(max-width:680px){.identity-grid,.permission-list{grid-template-columns:1fr}.permission-popover{left:16px!important;max-width:none;right:16px;width:auto}}
+</style>
+{% endblock %}
+{% block content %}
+<section class="heading"><div><h1>{{ title }}</h1><p style="color:var(--muted)">Choose a preset, then fine-tune exactly what this staff member can do.</p></div><a class="button" href="{% url 'settings_staff_list' %}">Back to staff</a></section>
+<form method="post" id="staff-access-form">{% csrf_token %}{{ form.non_field_errors }}
+<div class="access-layout">
+  <div>
+    <section class="access-card">
+      <h2>Staff identity</h2>
+      <div class="identity-grid">
+        <label>Username{{ form.username }}{{ form.username.errors }}</label>
+        <label>Email{{ form.email }}{{ form.email.errors }}</label>
+        <label>First name{{ form.first_name }}{{ form.first_name.errors }}</label>
+        <label>Last name{{ form.last_name }}{{ form.last_name.errors }}</label>
+        <label>Password{{ form.password }}<small>{{ form.password.help_text }}</small>{{ form.password.errors }}</label>
+        <label>Account status<span style="display:flex;align-items:center;gap:8px;font-weight:normal">{{ form.is_active }} Active account</span></label>
+      </div>
+    </section>
+
+    <section class="access-card" style="margin-top:18px">
+      <h2>Access preset</h2>
+      <label>{{ form.preset.label }}{{ form.preset }}<small>{{ form.preset.help_text }}</small>{{ form.preset.errors }}</label>
+      <div class="preset-help">The preset is only a starting point. Every checkbox below remains editable before saving.</div>
+    </section>
+
+    <section class="access-card" style="margin-top:18px">
+      <h2>Individual permissions</h2>
+      <p class="tooltip-help">Tap or hover briefly over an <strong>i</strong> icon for a short explanation.</p>
+      {{ form.permissions.errors }}
+      {% for section, entries in permission_sections %}
+      <div class="permission-section" data-section>
+        <header><strong>{{ section }}</strong><div class="section-tools"><button type="button" data-check-all>Select all</button><button type="button" data-clear-all>Clear</button></div></header>
+        <div class="permission-list">
+          {% for entry in entries %}
+          <div class="permission-item {% if entry.sensitive %}sensitive{% endif %}">
+            <input id="permission-{{ entry.permission.pk }}" type="checkbox" name="permissions" value="{{ entry.permission.pk }}" data-code="{{ entry.codename }}" {% if entry.permission.pk|stringformat:'s' in form.permissions.value %}checked{% endif %}>
+            <label class="permission-label" for="permission-{{ entry.permission.pk }}"><strong>{{ entry.label }}{% if entry.sensitive %} ⚠{% endif %}</strong><small>{{ entry.codename }}</small></label>
+            <button type="button" class="permission-info" aria-label="Explain {{ entry.label }}" aria-expanded="false" data-title="{{ entry.label }}" data-description="{{ entry.description }}">i</button>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </section>
+  </div>
+
+  <aside class="access-card access-summary">
+    <span style="color:var(--muted);font-weight:700">Selected access</span>
+    <div class="summary-count" id="permission-count">0</div>
+    <p id="permission-summary">No permissions selected.</p>
+    <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+    <p><strong>Security note</strong></p><p style="color:var(--muted)">Orange permissions can affect money, stock balances, staff access, or audit records.</p>
+    <button class="button primary wide">Save staff access</button>
+  </aside>
+</div>
+</form>
+<div class="permission-popover" id="permission-popover" role="tooltip" hidden><strong id="popover-title"></strong><span id="popover-description"></span></div>
+<script>
+(() => {
+ const presets={cashier:['access_pos','create_sale','view_own_sales','view_customers','create_customers'],senior_cashier:['access_pos','create_sale','apply_discount','view_own_sales','view_all_sales','reverse_sale','view_customers','create_customers','edit_customers'],inventory_counter:['view_products','view_stock','view_assigned_stocktakes','count_assigned_zones','create_products_during_stocktake','complete_stocktake_zones'],storekeeper:['view_products','create_products','edit_products','view_stock','receive_stock','adjust_stock','view_stock_movements','manage_categories','view_assigned_stocktakes','count_assigned_zones','create_products_during_stocktake','complete_stocktake_zones'],inventory_supervisor:['view_products','create_products','edit_products','change_selling_price','view_cost_price','change_cost_price','view_stock','receive_stock','adjust_stock','view_stock_movements','manage_categories','view_assigned_stocktakes','count_assigned_zones','create_products_during_stocktake','complete_stocktake_zones','view_all_stocktake_zones','create_stocktakes','assign_stocktake_teams','start_stocktakes','review_stocktake_counts']};
+ const boxes=[...document.querySelectorAll('input[name=permissions]')],count=document.getElementById('permission-count'),summary=document.getElementById('permission-summary'),preset=document.getElementById('id_preset');
+ function refresh(){const selected=boxes.filter(b=>b.checked);count.textContent=selected.length;summary.textContent=selected.length?`${selected.length} capabilities will be available to this account.`:'No permissions selected.';}
+ preset?.addEventListener('change',()=>{const codes=presets[preset.value];if(!codes||preset.value==='custom')return;boxes.forEach(box=>box.checked=codes.includes(box.dataset.code));refresh();});
+ document.querySelectorAll('[data-section]').forEach(section=>{section.querySelector('[data-check-all]').onclick=()=>{section.querySelectorAll('input[name=permissions]').forEach(b=>b.checked=true);refresh();};section.querySelector('[data-clear-all]').onclick=()=>{section.querySelectorAll('input[name=permissions]').forEach(b=>b.checked=false);refresh();};});
+ boxes.forEach(box=>box.addEventListener('change',refresh));
+
+ const buttons=[...document.querySelectorAll('.permission-info')],popover=document.getElementById('permission-popover'),popoverTitle=document.getElementById('popover-title'),popoverDescription=document.getElementById('popover-description');
+ let active=null,pinned=false,hoverTimer=null;
+ function positionPopover(button){
+   const r=button.getBoundingClientRect(),gap=8,margin=10;
+   popover.style.left='0px';popover.style.top='0px';popover.hidden=false;
+   const p=popover.getBoundingClientRect();
+   let left=r.right-p.width;
+   left=Math.max(margin,Math.min(left,window.innerWidth-p.width-margin));
+   let top=r.bottom+gap;
+   if(top+p.height>window.innerHeight-margin)top=r.top-p.height-gap;
+   popover.style.left=`${left}px`;popover.style.top=`${Math.max(margin,top)}px`;
+ }
+ function openPopover(button,lock=false){
+   clearTimeout(hoverTimer);
+   buttons.forEach(b=>b.setAttribute('aria-expanded','false'));
+   active=button;pinned=lock;button.setAttribute('aria-expanded','true');
+   popoverTitle.textContent=button.dataset.title||'Permission details';
+   popoverDescription.textContent=button.dataset.description||'';
+   positionPopover(button);
+ }
+ function closePopover(force=false){
+   clearTimeout(hoverTimer);
+   if(pinned&&!force)return;
+   if(active)active.setAttribute('aria-expanded','false');
+   active=null;pinned=false;popover.hidden=true;
+ }
+ buttons.forEach(button=>{
+   button.addEventListener('click',event=>{event.stopPropagation();if(active===button&&pinned){closePopover(true);}else{openPopover(button,true);}});
+   button.addEventListener('mouseenter',()=>{if(!window.matchMedia('(hover:hover)').matches||pinned)return;hoverTimer=setTimeout(()=>openPopover(button,false),350);});
+   button.addEventListener('mouseleave',()=>{clearTimeout(hoverTimer);if(!pinned)closePopover();});
+   button.addEventListener('focus',()=>openPopover(button,false));
+   button.addEventListener('blur',()=>{if(!pinned)closePopover();});
+ });
+ document.addEventListener('click',event=>{if(!event.target.closest('.permission-info')&&!event.target.closest('#permission-popover'))closePopover(true);});
+ document.addEventListener('keydown',event=>{if(event.key==='Escape')closePopover(true);});
+ window.addEventListener('scroll',()=>{if(active)positionPopover(active);},{passive:true});
+ window.addEventListener('resize',()=>{if(active)positionPopover(active);});
+ refresh();
+})();
+</script>
+{% endblock %}

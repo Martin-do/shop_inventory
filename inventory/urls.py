@@ -1,15 +1,31 @@
 from django.urls import path
 
-from . import views
+from . import audit_views, security_views, staff_access_views, stocktake_views, views
+from .hardened_stocktake_views import stocktake_quick_product, stocktake_save_count
+from .hardened_sync import api_sync_offline
+from .stocktake_search import stocktake_product_search
 
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
     path("products/", views.product_list, name="product_list"),
     path("products/new/", views.product_create, name="product_create"),
-    path("products/<int:pk>/edit/", views.product_update, name="product_update"),
+    path("products/<int:pk>/edit/", security_views.product_update, name="product_update"),
     path("products/<int:pk>/toggle/", views.product_toggle_active, name="product_toggle_active"),
     path("stock/receive/", views.receive_stock, name="receive_stock"),
+    path("stocktakes/", stocktake_views.stocktake_list, name="stocktake_list"),
+    path("stocktakes/new/", stocktake_views.stocktake_create, name="stocktake_create"),
+    path("stocktakes/<int:session_id>/", stocktake_views.stocktake_detail, name="stocktake_detail"),
+    path("stocktakes/<int:session_id>/start/", stocktake_views.stocktake_start, name="stocktake_start"),
+    path("stocktakes/<int:session_id>/review/", stocktake_views.stocktake_submit_review, name="stocktake_submit_review"),
+    path("stocktakes/<int:session_id>/apply/", stocktake_views.stocktake_apply, name="stocktake_apply"),
+    path("stocktakes/zones/<int:zone_id>/assign/", stocktake_views.stocktake_assign_zone, name="stocktake_assign_zone"),
+    path("stocktakes/zones/<int:zone_id>/count/", stocktake_views.stocktake_count_zone, name="stocktake_count_zone"),
+    path("stocktakes/zones/<int:zone_id>/save/", stocktake_save_count, name="stocktake_save_count"),
+    path("stocktakes/zones/<int:zone_id>/quick-product/", stocktake_quick_product, name="stocktake_quick_product"),
+    path("stocktakes/zones/<int:zone_id>/complete/", stocktake_views.stocktake_complete_zone, name="stocktake_complete_zone"),
+    path("stocktakes/counts/<int:count_id>/review/", stocktake_views.stocktake_review_count, name="stocktake_review_count"),
+    path("stocktakes/api/products/search/", stocktake_product_search, name="stocktake_product_search"),
     path("pos/", views.pos, name="pos"),
     path("pos/add/", views.pos_add, name="pos_add"),
     path("pos/remove/<str:barcode>/", views.pos_remove, name="pos_remove"),
@@ -17,26 +33,25 @@ urlpatterns = [
     path("pos/checkout/", views.pos_checkout, name="pos_checkout"),
     path("sales/<int:sale_id>/", views.sale_detail, name="sale_detail"),
     path("sales/<int:sale_id>/receipt/", views.sale_receipt, name="sale_receipt"),
-    path("sales/<int:sale_id>/revert/", views.sale_revert, name="sale_revert"),
-    path("reports/", views.reports, name="reports"),
+    path("sales/<int:sale_id>/revert/", security_views.sale_revert, name="sale_revert"),
+    path("reports/", security_views.reports, name="reports"),
     path("reports/products.csv", views.export_products_csv, name="export_products_csv"),
-    path("reports/sales.csv", views.export_sales_csv, name="export_sales_csv"),
-    # Settings & custom admin dashboard
+    path("reports/sales.csv", security_views.export_sales_csv, name="export_sales_csv"),
+    path("history/", audit_views.audit_history, name="audit_history"),
+    path("history/export.csv", audit_views.audit_export_csv, name="audit_export_csv"),
+    path("history/<int:pk>/", audit_views.audit_detail, name="audit_detail"),
     path("settings/", views.settings_dashboard, name="settings_dashboard"),
-    path("settings/backup/", views.trigger_manual_backup, name="trigger_manual_backup"),
-    path("settings/staff/", views.settings_staff_list, name="settings_staff_list"),
-    path("settings/staff/new/", views.settings_staff_create, name="settings_staff_create"),
-    path("settings/staff/<int:pk>/edit/", views.settings_staff_update, name="settings_staff_update"),
+    path("settings/backup/", security_views.trigger_manual_backup, name="trigger_manual_backup"),
+    path("settings/staff/", staff_access_views.staff_list, name="settings_staff_list"),
+    path("settings/staff/new/", staff_access_views.staff_create, name="settings_staff_create"),
+    path("settings/staff/<int:pk>/edit/", staff_access_views.staff_update, name="settings_staff_update"),
     path("settings/categories/", views.settings_category_list, name="settings_category_list"),
     path("settings/categories/<int:pk>/edit/", views.settings_category_update, name="settings_category_update"),
     path("settings/categories/<int:pk>/delete/", views.settings_category_delete, name="settings_category_delete"),
-    # Customer Profiles
     path("customers/", views.customer_list, name="customer_list"),
     path("customers/new/", views.customer_create, name="customer_create"),
     path("customers/<int:pk>/edit/", views.customer_update, name="customer_update"),
-    # API Endpoints
-    path("api/products/search/", views.api_product_search, name="api_product_search"),
-    path("api/products/catalog/", views.api_active_catalog, name="api_active_catalog"),
-    path("api/pos/sync-offline/", views.api_sync_offline, name="api_sync_offline"),
+    path("api/products/search/", security_views.api_product_search, name="api_product_search"),
+    path("api/products/catalog/", security_views.api_active_catalog, name="api_active_catalog"),
+    path("api/pos/sync-offline/", api_sync_offline, name="api_sync_offline"),
 ]
-

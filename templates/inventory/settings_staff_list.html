@@ -1,55 +1,24 @@
 {% extends "base.html" %}
-{% block title %}Manage Staff{% endblock %}
+{% block title %}Manage Staff Access{% endblock %}
 {% block content %}
 <section class="heading">
-  <h1>Staff Accounts</h1>
-  <div class="actions">
-    <a class="button" href="{% url 'settings_dashboard' %}">Back to Settings</a>
-    <a class="button primary" href="{% url 'settings_staff_create' %}">Create Staff Account</a>
-  </div>
+  <div><h1>Staff Access</h1><p style="color:var(--muted);margin:6px 0 0">Roles are presets; individual permissions determine actual access.</p></div>
+  <div class="actions"><a class="button" href="{% url 'settings_dashboard' %}">Back to Settings</a>{% if perms.inventory.create_staff %}<a class="button primary" href="{% url 'settings_staff_create' %}">Create Staff Account</a>{% endif %}</div>
 </section>
 
-<section class="panel">
+<section class="panel" style="overflow:auto">
   <table>
-    <thead>
-      <tr>
-        <th>Username</th>
-        <th>First Name</th>
-        <th>Last Name</th>
-        <th>Status</th>
-        <th>Role</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
+    <thead><tr><th>Staff member</th><th>Status</th><th>Access preset</th><th>Effective permissions</th><th>Actions</th></tr></thead>
     <tbody>
-      {% for member in staff_members %}
-        <tr>
-          <td>{{ member.username }}</td>
-          <td>{{ member.first_name }}</td>
-          <td>{{ member.last_name }}</td>
-          <td>
-            {% if member.is_active %}
-              <span class="found" style="padding: 2px 8px; font-size: 13px;">Active</span>
-            {% else %}
-              <span class="message error" style="padding: 2px 8px; font-size: 13px; margin: 0;">Inactive</span>
-            {% endif %}
-          </td>
-          <td>
-            {% if member.is_superuser %}
-              <strong>Superuser</strong>
-            {% else %}
-              {{ member.profile.get_role_display|default:member.role|capfirst }}
-            {% endif %}
-          </td>
-          <td>
-            <a class="button" href="{% url 'settings_staff_update' member.pk %}">Edit</a>
-          </td>
-        </tr>
-      {% empty %}
-        <tr>
-          <td colspan="6">No staff accounts found.</td>
-        </tr>
-      {% endfor %}
+      {% for row in access_rows %}
+      <tr>
+        <td><strong>{{ row.user.get_full_name|default:row.user.username }}</strong><small>{{ row.user.username }}{% if row.user.email %} · {{ row.user.email }}{% endif %}</small></td>
+        <td>{% if row.user.is_active %}<span class="found" style="padding:4px 9px;font-size:13px">Active</span>{% else %}<span style="color:var(--danger);font-weight:700">Inactive</span>{% endif %}</td>
+        <td>{% if row.user.is_superuser %}<strong>Owner / system administrator</strong>{% elif row.groups %}{{ row.groups|join:", " }}{% else %}<span style="color:var(--muted)">Custom access</span>{% endif %}</td>
+        <td><strong>{{ row.permission_count }}</strong> capabilities</td>
+        <td>{% if perms.inventory.edit_staff %}<a class="button" href="{% url 'settings_staff_update' row.user.pk %}">Edit access</a>{% endif %}</td>
+      </tr>
+      {% empty %}<tr><td colspan="5">No staff accounts found.</td></tr>{% endfor %}
     </tbody>
   </table>
 </section>

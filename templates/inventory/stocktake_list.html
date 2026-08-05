@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Opening Stocktakes{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+  <div><h1 style="margin:0">Opening Inventory</h1><p class="muted">Count in zones, review, then apply once.</p></div>
+  {% if user.role == 'admin' %}<a class="button primary" href="{% url 'stocktake_create' %}">New Stocktake</a>{% endif %}
+</div>
+<div class="card" style="overflow:auto">
+<table style="width:100%;border-collapse:collapse">
+<thead><tr><th>Name</th><th>Status</th><th>Zones</th><th>Count lines</th><th>Created</th><th></th></tr></thead>
+<tbody>
+{% for session in sessions %}
+<tr><td><strong>{{ session.name }}</strong></td><td>{{ session.get_status_display }}</td><td>{{ session.zone_count }}</td><td>{{ session.count_count }}</td><td>{{ session.created_at|date:'Y-m-d H:i' }}</td><td><a class="button" href="{% url 'stocktake_detail' session.id %}">Open</a></td></tr>
+{% empty %}<tr><td colspan="6">No opening stocktake has been created.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

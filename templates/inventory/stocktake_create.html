@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Create Opening Stocktake{% endblock %}
+{% block content %}
+<div class="card" style="max-width:760px;margin:auto">
+<h1>Create Opening Stocktake</h1>
+<form method="post">{% csrf_token %}
+<label>Name</label><input name="name" required placeholder="Opening Inventory — Main Shop">
+<label>Zones, one per line</label><textarea name="zones" rows="10" required placeholder="Shelf A&#10;Shelf B&#10;Store Room&#10;Freezer&#10;Counter"></textarea>
+<label>Notes</label><textarea name="notes" rows="3"></textarea>
+<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="blind_count" checked style="width:auto"> Hide expected stock from counting teams</label>
+<div style="display:flex;gap:10px;margin-top:18px"><button class="button primary">Create Stocktake</button><a class="button" href="{% url 'stocktake_list' %}">Cancel</a></div>
+</form></div>
+{% endblock %}
