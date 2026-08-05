@@ -77,7 +77,7 @@ class StaffAccessForm(forms.ModelForm):
         password = self.cleaned_data.get("password")
         if password:
             user.set_password(password)
-        # Legacy role decorators are kept temporarily; the central permission gate is authoritative.
+        # Legacy role decorators remain temporarily; the central permission gate is authoritative.
         user.is_staff = True
         if commit:
             user.save()
@@ -87,11 +87,12 @@ class StaffAccessForm(forms.ModelForm):
 
             preset = self.cleaned_data.get("preset") or "custom"
             selected = self.cleaned_data.get("permissions")
+            selected_codes = {permission.codename for permission in selected}
             user.groups.clear()
-            if preset != "custom":
+            if preset != "custom" and selected_codes == set(PRESETS[preset]["permissions"]):
                 group = Group.objects.filter(name=PRESETS[preset]["label"]).first()
                 if group:
                     user.groups.add(group)
-            # Store the exact final selection directly so custom removals override preset defaults.
+            # Exact direct permissions are authoritative; group membership is descriptive only.
             user.user_permissions.set(selected)
         return user
