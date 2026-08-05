@@ -93,6 +93,11 @@ class StaffAccessForm(forms.ModelForm):
                 group = Group.objects.filter(name=PRESETS[preset]["label"]).first()
                 if group:
                     user.groups.add(group)
-            # Exact direct permissions are authoritative; group membership is descriptive only.
+            elif not selected_codes:
+                # A zero-access account still needs a marker so it is not mistaken for an unmigrated legacy account.
+                group = Group.objects.filter(name=PRESETS["custom"]["label"]).first()
+                if group:
+                    user.groups.add(group)
+            # Exact direct permissions are authoritative; group membership is a preset/configuration marker.
             user.user_permissions.set(selected)
         return user
