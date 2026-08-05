@@ -46,8 +46,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    "inventory.audit_middleware.AuditRequestMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "inventory.permission_middleware.GranularPermissionMiddleware",
+    "inventory.audit_middleware.AuditRequestMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
