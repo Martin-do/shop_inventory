@@ -53,6 +53,6 @@ def create_permissions(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    dependencies = [("inventory", "0011_rename_inventory_a_object__b3e659_idx_inventory_a_object__6617b5_idx")]
+    dependencies = [("inventory", "0010_opening_stocktake")]
 
     operations = [migrations.RunPython(create_permissions, migrations.RunPython.noop)]
