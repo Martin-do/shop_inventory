@@ -1,4 +1,4 @@
-from django.db import migrations, models
+from django.db import migrations
 
 
 PERMISSIONS = {
@@ -55,7 +55,4 @@ def create_permissions(apps, schema_editor):
 class Migration(migrations.Migration):
     dependencies = [("inventory", "0011_rename_inventory_a_object__b3e659_idx_inventory_a_object__6617b5_idx")]
 
-    operations = [
-        migrations.AddField(model_name="userprofile", name="job_title", field=models.CharField(blank=True, max_length=120)),
-        migrations.RunPython(create_permissions, migrations.RunPython.noop),
-    ]
+    operations = [migrations.RunPython(create_permissions, migrations.RunPython.noop)]
