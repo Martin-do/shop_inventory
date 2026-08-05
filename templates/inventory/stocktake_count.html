@@ -15,7 +15,8 @@
 <p id="camera-help" class="muted">Live camera scanning requires HTTPS. Manual entry and Bluetooth/USB scanners work over the local IP address.</p>
 <div class="card">
 <form id="count-form">{% csrf_token %}
-<label for="barcode">Barcode</label>
+<h3 style="margin-top:0">Manual barcode entry</h3>
+<label for="barcode">Barcode or product search</label>
 <div class="lookup-row"><input id="barcode" name="barcode" inputmode="numeric" autocomplete="off" required autofocus><button class="button" type="button" id="lookup">Find product</button></div>
 <div class="new-product-actions"><button class="button" type="button" id="open-product-form">+ Add a new product</button></div>
 <div id="product-result"></div>
