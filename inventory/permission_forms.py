@@ -7,7 +7,6 @@ from .models import UserProfile
 
 class StaffAccessForm(forms.ModelForm):
     password = forms.CharField(widget=forms.PasswordInput(), required=False, help_text="Leave blank to keep the current password.")
-    job_title = forms.CharField(max_length=120, required=False, help_text="A descriptive title only; permissions determine actual access.")
     preset = forms.ChoiceField(
         choices=[(key, data["label"]) for key, data in PRESETS.items()],
         required=False,
@@ -48,10 +47,18 @@ class StaffAccessForm(forms.ModelForm):
             self.permission_sections.append((section, entries))
 
         if self.instance.pk:
-            self.fields["job_title"].initial = getattr(getattr(self.instance, "profile", None), "job_title", "")
-            self.fields["permissions"].initial = self.instance.user_permissions.filter(
-                content_type__app_label="inventory", codename__in=ALL_CODENAMES
-            )
+            effective_codes = {
+                value.split(".", 1)[1]
+                for value in self.instance.get_all_permissions()
+                if value.startswith("inventory.")
+            }
+            self.fields["permissions"].initial = permission_qs.filter(codename__in=effective_codes)
+            matching_group = self.instance.groups.filter(name__in=[data["label"] for data in PRESETS.values()]).first()
+            if matching_group:
+                for key, data in PRESETS.items():
+                    if data["label"] == matching_group.name:
+                        self.fields["preset"].initial = key
+                        break
         else:
             self.fields["password"].required = True
             self.fields["password"].help_text = "Required for a new staff account."
@@ -70,23 +77,21 @@ class StaffAccessForm(forms.ModelForm):
         password = self.cleaned_data.get("password")
         if password:
             user.set_password(password)
+        # Legacy role decorators are kept temporarily; the central permission gate is authoritative.
         user.is_staff = True
         if commit:
             user.save()
             profile, _ = UserProfile.objects.get_or_create(user=user)
-            profile.job_title = self.cleaned_data.get("job_title", "").strip()
-            profile.role = UserProfile.ROLE_ADMIN if user.is_superuser else UserProfile.ROLE_CASHIER
-            profile.save()
+            profile.role = UserProfile.ROLE_ADMIN
+            profile.save(update_fields=["role"])
 
             preset = self.cleaned_data.get("preset") or "custom"
             selected = self.cleaned_data.get("permissions")
-            if preset != "custom" and not self.is_bound:
-                preset_codes = PRESETS[preset]["permissions"]
-                selected = Permission.objects.filter(content_type__app_label="inventory", codename__in=preset_codes)
             user.groups.clear()
             if preset != "custom":
                 group = Group.objects.filter(name=PRESETS[preset]["label"]).first()
                 if group:
                     user.groups.add(group)
+            # Store the exact final selection directly so custom removals override preset defaults.
             user.user_permissions.set(selected)
         return user
