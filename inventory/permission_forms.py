@@ -86,7 +86,13 @@ class StaffAccessForm(forms.ModelForm):
 
         selected_codes = set()
         if self.is_bound:
-            selected_ids = {str(value) for value in self.data.getlist("permissions")}
+            if hasattr(self.data, "getlist"):
+                submitted_permissions = self.data.getlist("permissions")
+            else:
+                submitted_permissions = self.data.get("permissions", [])
+                if not isinstance(submitted_permissions, (list, tuple, set)):
+                    submitted_permissions = [submitted_permissions]
+            selected_ids = {str(value) for value in submitted_permissions if value not in (None, "")}
             selected_codes = set(permission_qs.filter(pk__in=selected_ids).values_list("codename", flat=True))
         elif self.instance.pk:
             direct_codes = set(
