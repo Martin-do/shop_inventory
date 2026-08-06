@@ -47,7 +47,7 @@ class GranularPermissionTests(TestCase):
         response = self.client.get(reverse("settings_staff_update", args=[self.cashier.pk]))
         self.assertContains(response, 'class="permission-info"', html=False)
         self.assertContains(response, "Allows cancelling a completed sale and restoring its sold quantities to stock.", html=False)
-        self.assertContains(response, "Hover over, focus, or tap", html=False)
+        self.assertContains(response, "Tap or hover briefly", html=False)
 
     def test_non_superuser_cannot_grant_permission_they_lack(self):
         manager = User.objects.create_user("manager", password="pw", is_staff=True)

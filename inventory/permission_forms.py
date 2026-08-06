@@ -83,6 +83,54 @@ class StaffAccessForm(forms.ModelForm):
             codename__in=ALL_CODENAMES,
         ).select_related("content_type").order_by("name")
         self.fields["permissions"].queryset = permission_qs
+
+        selected_codes = set()
+        if self.is_bound:
+            if hasattr(self.data, "getlist"):
+                raw_selected = self.data.getlist("permissions")
+            else:
+                raw_selected = self.data.get("permissions", [])
+                if not isinstance(raw_selected, (list, tuple, set)):
+                    raw_selected = [raw_selected] if raw_selected not in (None, "") else []
+            selected_ids = {str(value) for value in raw_selected}
+            selected_codes = set(permission_qs.filter(pk__in=selected_ids).values_list("codename", flat=True))
+        elif self.instance.pk:
+            direct_codes = set(
+                self.instance.user_permissions.filter(
+                    content_type__app_label="inventory", codename__in=ALL_CODENAMES
+                ).values_list("codename", flat=True)
+            )
+            has_custom_marker = self.instance.groups.filter(name=PRESETS["custom"]["label"]).exists()
+            if direct_codes or has_custom_marker:
+                selected_codes = direct_codes
+            else:
+                selected_codes = {
+                    value.split(".", 1)[1]
+                    for value in self.instance.get_all_permissions()
+                    if value.startswith("inventory.")
+                }
+            selected_permission_ids = permission_qs.filter(
+                codename__in=selected_codes
+            ).values_list("pk", flat=True)
+            # The custom template compares submitted checkbox values as strings.
+            # Store initial values in the same representation so saved access
+            # renders as checked when the staff editor is reopened.
+            self.fields["permissions"].initial = [
+                str(permission_id) for permission_id in selected_permission_ids
+            ]
+
+            matching_group = self.instance.groups.filter(name__in=[data["label"] for data in PRESETS.values()]).first()
+            if matching_group:
+                for key, data in PRESETS.items():
+                    if data["label"] == matching_group.name:
+                        self.fields["preset"].initial = key
+                        break
+            elif selected_codes:
+                self.fields["preset"].initial = "custom"
+        else:
+            self.fields["password"].required = True
+            self.fields["password"].help_text = "Required for a new staff account."
+
         self.permission_sections = []
         by_code = {p.codename: p for p in permission_qs}
         for section, rows in PERMISSION_SECTIONS.items():
@@ -96,25 +144,9 @@ class StaffAccessForm(forms.ModelForm):
                         "label": label,
                         "description": PERMISSION_DESCRIPTIONS.get(codename, permission.name),
                         "sensitive": codename in SENSITIVE_PERMISSIONS,
+                        "checked": codename in selected_codes,
                     })
             self.permission_sections.append((section, entries))
-
-        if self.instance.pk:
-            effective_codes = {
-                value.split(".", 1)[1]
-                for value in self.instance.get_all_permissions()
-                if value.startswith("inventory.")
-            }
-            self.fields["permissions"].initial = permission_qs.filter(codename__in=effective_codes)
-            matching_group = self.instance.groups.filter(name__in=[data["label"] for data in PRESETS.values()]).first()
-            if matching_group:
-                for key, data in PRESETS.items():
-                    if data["label"] == matching_group.name:
-                        self.fields["preset"].initial = key
-                        break
-        else:
-            self.fields["password"].required = True
-            self.fields["password"].help_text = "Required for a new staff account."
 
     def clean_permissions(self):
         selected = self.cleaned_data.get("permissions")
@@ -130,7 +162,6 @@ class StaffAccessForm(forms.ModelForm):
         password = self.cleaned_data.get("password")
         if password:
             user.set_password(password)
-        # Legacy role decorators remain temporarily; the central permission gate is authoritative.
         user.is_staff = True
         if commit:
             user.save()
@@ -144,8 +175,6 @@ class StaffAccessForm(forms.ModelForm):
             user.groups.clear()
 
             if preset == "custom":
-                # The zero-permission case needs an explicit marker so it cannot be
-                # mistaken for an unmigrated legacy administrator account.
                 group, _ = Group.objects.get_or_create(name=PRESETS["custom"]["label"])
                 group.permissions.clear()
                 user.groups.add(group)
@@ -153,8 +182,10 @@ class StaffAccessForm(forms.ModelForm):
                 group = Group.objects.filter(name=PRESETS[preset]["label"]).first()
                 if group:
                     user.groups.add(group)
+            else:
+                group, _ = Group.objects.get_or_create(name=PRESETS["custom"]["label"])
+                group.permissions.clear()
+                user.groups.add(group)
 
-            # Exact direct permissions are authoritative. Preset group membership is
-            # descriptive and is only retained when the selection exactly matches it.
             user.user_permissions.set(selected)
         return user

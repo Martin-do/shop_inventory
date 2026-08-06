@@ -1,9 +1,7 @@
 from django.urls import path
 
-from . import audit_views, security_views, staff_access_views, stocktake_views, views
-from .hardened_stocktake_views import stocktake_quick_product, stocktake_save_count
+from . import audit_views, granular_stocktake_views, security_views, staff_access_views, views
 from .hardened_sync import api_sync_offline
-from .stocktake_search import stocktake_product_search
 
 
 urlpatterns = [
@@ -13,19 +11,19 @@ urlpatterns = [
     path("products/<int:pk>/edit/", security_views.product_update, name="product_update"),
     path("products/<int:pk>/toggle/", views.product_toggle_active, name="product_toggle_active"),
     path("stock/receive/", views.receive_stock, name="receive_stock"),
-    path("stocktakes/", stocktake_views.stocktake_list, name="stocktake_list"),
-    path("stocktakes/new/", stocktake_views.stocktake_create, name="stocktake_create"),
-    path("stocktakes/<int:session_id>/", stocktake_views.stocktake_detail, name="stocktake_detail"),
-    path("stocktakes/<int:session_id>/start/", stocktake_views.stocktake_start, name="stocktake_start"),
-    path("stocktakes/<int:session_id>/review/", stocktake_views.stocktake_submit_review, name="stocktake_submit_review"),
-    path("stocktakes/<int:session_id>/apply/", stocktake_views.stocktake_apply, name="stocktake_apply"),
-    path("stocktakes/zones/<int:zone_id>/assign/", stocktake_views.stocktake_assign_zone, name="stocktake_assign_zone"),
-    path("stocktakes/zones/<int:zone_id>/count/", stocktake_views.stocktake_count_zone, name="stocktake_count_zone"),
-    path("stocktakes/zones/<int:zone_id>/save/", stocktake_save_count, name="stocktake_save_count"),
-    path("stocktakes/zones/<int:zone_id>/quick-product/", stocktake_quick_product, name="stocktake_quick_product"),
-    path("stocktakes/zones/<int:zone_id>/complete/", stocktake_views.stocktake_complete_zone, name="stocktake_complete_zone"),
-    path("stocktakes/counts/<int:count_id>/review/", stocktake_views.stocktake_review_count, name="stocktake_review_count"),
-    path("stocktakes/api/products/search/", stocktake_product_search, name="stocktake_product_search"),
+    path("stocktakes/", granular_stocktake_views.stocktake_list, name="stocktake_list"),
+    path("stocktakes/new/", granular_stocktake_views.stocktake_create, name="stocktake_create"),
+    path("stocktakes/<int:session_id>/", granular_stocktake_views.stocktake_detail, name="stocktake_detail"),
+    path("stocktakes/<int:session_id>/start/", granular_stocktake_views.stocktake_start, name="stocktake_start"),
+    path("stocktakes/<int:session_id>/review/", granular_stocktake_views.stocktake_submit_review, name="stocktake_submit_review"),
+    path("stocktakes/<int:session_id>/apply/", granular_stocktake_views.stocktake_apply, name="stocktake_apply"),
+    path("stocktakes/zones/<int:zone_id>/assign/", granular_stocktake_views.stocktake_assign_zone, name="stocktake_assign_zone"),
+    path("stocktakes/zones/<int:zone_id>/count/", granular_stocktake_views.stocktake_count_zone, name="stocktake_count_zone"),
+    path("stocktakes/zones/<int:zone_id>/save/", granular_stocktake_views.stocktake_save_count, name="stocktake_save_count"),
+    path("stocktakes/zones/<int:zone_id>/quick-product/", granular_stocktake_views.stocktake_quick_product, name="stocktake_quick_product"),
+    path("stocktakes/zones/<int:zone_id>/complete/", granular_stocktake_views.stocktake_complete_zone, name="stocktake_complete_zone"),
+    path("stocktakes/counts/<int:count_id>/review/", granular_stocktake_views.stocktake_review_count, name="stocktake_review_count"),
+    path("stocktakes/api/products/search/", granular_stocktake_views.stocktake_product_search, name="stocktake_product_search"),
     path("pos/", views.pos, name="pos"),
     path("pos/add/", views.pos_add, name="pos_add"),
     path("pos/remove/<str:barcode>/", views.pos_remove, name="pos_remove"),
