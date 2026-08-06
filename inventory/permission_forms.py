@@ -87,12 +87,12 @@ class StaffAccessForm(forms.ModelForm):
         selected_codes = set()
         if self.is_bound:
             if hasattr(self.data, "getlist"):
-                submitted_permissions = self.data.getlist("permissions")
+                raw_selected = self.data.getlist("permissions")
             else:
-                submitted_permissions = self.data.get("permissions", [])
-                if not isinstance(submitted_permissions, (list, tuple, set)):
-                    submitted_permissions = [submitted_permissions]
-            selected_ids = {str(value) for value in submitted_permissions if value not in (None, "")}
+                raw_selected = self.data.get("permissions", [])
+                if not isinstance(raw_selected, (list, tuple, set)):
+                    raw_selected = [raw_selected] if raw_selected not in (None, "") else []
+            selected_ids = {str(value) for value in raw_selected}
             selected_codes = set(permission_qs.filter(pk__in=selected_ids).values_list("codename", flat=True))
         elif self.instance.pk:
             direct_codes = set(
@@ -109,7 +109,15 @@ class StaffAccessForm(forms.ModelForm):
                     for value in self.instance.get_all_permissions()
                     if value.startswith("inventory.")
                 }
-            self.fields["permissions"].initial = permission_qs.filter(codename__in=selected_codes)
+            selected_permission_ids = permission_qs.filter(
+                codename__in=selected_codes
+            ).values_list("pk", flat=True)
+            # The custom template compares submitted checkbox values as strings.
+            # Store initial values in the same representation so saved access
+            # renders as checked when the staff editor is reopened.
+            self.fields["permissions"].initial = [
+                str(permission_id) for permission_id in selected_permission_ids
+            ]
 
             matching_group = self.instance.groups.filter(name__in=[data["label"] for data in PRESETS.values()]).first()
             if matching_group:
