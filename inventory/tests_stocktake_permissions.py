@@ -89,3 +89,17 @@ class GranularStocktakeEntryTests(TestCase):
             {"view_assigned_stocktakes", "count_assigned_zones", "complete_stocktake_zones"},
         )
         self.assertEqual(reopened.fields["preset"].initial, "custom")
+
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("settings_staff_update", args=[self.counter.pk]))
+        self.assertEqual(response.status_code, 200)
+        for permission in (
+            self.view_permission,
+            self.count_permission,
+            self.complete_permission,
+        ):
+            self.assertContains(
+                response,
+                f'value="{permission.pk}" data-code="{permission.codename}" checked',
+                html=False,
+            )
