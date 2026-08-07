@@ -1,4 +1,5 @@
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import Count, Sum
 from django.http import JsonResponse
@@ -24,23 +25,29 @@ def _can_view_all(user):
 
 
 def _assigned_to_session(user, session):
-    return session.zones.filter(assigned_users=user).exists()
+    if not getattr(user, "is_authenticated", False) or not getattr(user, "pk", None):
+        return False
+    return session.zones.filter(assigned_users__pk=user.pk).exists()
 
 
 def _assigned_to_zone(user, zone):
+    if not getattr(user, "is_authenticated", False) or not getattr(user, "pk", None):
+        return False
     return zone.assigned_users.filter(pk=user.pk).exists()
 
 
+@login_required
 def stocktake_list(request):
     sessions = StocktakeSession.objects.annotate(
         zone_count=Count("zones", distinct=True),
         count_count=Count("counts", distinct=True),
     )
     if not _can_view_all(request.user):
-        sessions = sessions.filter(zones__assigned_users=request.user).distinct()
+        sessions = sessions.filter(zones__assigned_users__pk=request.user.pk).distinct()
     return render(request, "inventory/stocktake_list.html", {"sessions": sessions})
 
 
+@login_required
 def stocktake_detail(request, session_id):
     session = get_object_or_404(StocktakeSession, pk=session_id)
     can_view_all = _can_view_all(request.user)
@@ -50,7 +57,7 @@ def stocktake_detail(request, session_id):
 
     zones = session.zones.prefetch_related("assigned_users").annotate(item_count=Count("counts"))
     if not can_view_all:
-        zones = zones.filter(assigned_users=request.user)
+        zones = zones.filter(assigned_users__pk=request.user.pk)
 
     product_totals = (
         session.counts.values("product_id", "product__name", "product__barcode")
@@ -83,6 +90,7 @@ def stocktake_detail(request, session_id):
     )
 
 
+@login_required
 def stocktake_count_zone(request, zone_id):
     zone = get_object_or_404(StocktakeZone.objects.select_related("session"), pk=zone_id)
     if not _can_view_all(request.user) and not _assigned_to_zone(request.user, zone):
@@ -91,6 +99,7 @@ def stocktake_count_zone(request, zone_id):
     return stocktake_views.stocktake_count_zone.__wrapped__(request, zone_id)
 
 
+@login_required
 def stocktake_save_count(request, zone_id):
     zone = get_object_or_404(StocktakeZone.objects.select_related("session"), pk=zone_id)
     if not _can_view_all(request.user) and not _assigned_to_zone(request.user, zone):
@@ -98,6 +107,7 @@ def stocktake_save_count(request, zone_id):
     return hardened_stocktake_views.stocktake_save_count.__wrapped__(request, zone_id)
 
 
+@login_required
 def stocktake_quick_product(request, zone_id):
     zone = get_object_or_404(StocktakeZone.objects.select_related("session"), pk=zone_id)
     if not _can_view_all(request.user) and not _assigned_to_zone(request.user, zone):
@@ -105,6 +115,7 @@ def stocktake_quick_product(request, zone_id):
     return hardened_stocktake_views.stocktake_quick_product.__wrapped__(request, zone_id)
 
 
+@login_required
 def stocktake_complete_zone(request, zone_id):
     zone = get_object_or_404(StocktakeZone.objects.select_related("session"), pk=zone_id)
     if not _can_view_all(request.user) and not _assigned_to_zone(request.user, zone):
@@ -113,14 +124,16 @@ def stocktake_complete_zone(request, zone_id):
     return stocktake_views.stocktake_complete_zone.__wrapped__(request, zone_id)
 
 
+@login_required
 def stocktake_product_search(request):
     return stocktake_search.stocktake_product_search.__wrapped__(request)
 
 
 # The middleware enforces the action-specific granular permission before these run.
-stocktake_create = stocktake_views.stocktake_create.__wrapped__
-stocktake_assign_zone = stocktake_views.stocktake_assign_zone.__wrapped__
-stocktake_start = stocktake_views.stocktake_start.__wrapped__
-stocktake_submit_review = stocktake_views.stocktake_submit_review.__wrapped__
-stocktake_review_count = stocktake_views.stocktake_review_count.__wrapped__
-stocktake_apply = stocktake_views.stocktake_apply.__wrapped__
+# login_required ensures expired or missing sessions redirect safely before legacy code executes.
+stocktake_create = login_required(stocktake_views.stocktake_create.__wrapped__)
+stocktake_assign_zone = login_required(stocktake_views.stocktake_assign_zone.__wrapped__)
+stocktake_start = login_required(stocktake_views.stocktake_start.__wrapped__)
+stocktake_submit_review = login_required(stocktake_views.stocktake_submit_review.__wrapped__)
+stocktake_review_count = login_required(stocktake_views.stocktake_review_count.__wrapped__)
+stocktake_apply = login_required(stocktake_views.stocktake_apply.__wrapped__)

@@ -45,6 +45,13 @@ class GranularStocktakeEntryTests(TestCase):
             200,
         )
 
+    def test_anonymous_stocktake_request_redirects_to_login(self):
+        self.client.logout()
+        response = self.client.get(reverse("stocktake_detail", args=[self.session.pk]))
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith(reverse("login")))
+        self.assertIn("next=", response.url)
+
     def test_counter_cannot_open_unassigned_zone(self):
         other_zone = StocktakeZone.objects.create(session=self.session, name="Store room")
         response = self.client.get(reverse("stocktake_count_zone", args=[other_zone.pk]))
