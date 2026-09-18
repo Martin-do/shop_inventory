@@ -18,12 +18,13 @@
         <label>First name{{ form.first_name }}{{ form.first_name.errors }}</label>
         <label>Last name{{ form.last_name }}{{ form.last_name.errors }}</label>
         <label>Password{{ form.password }}<small>{{ form.password.help_text }}</small>{{ form.password.errors }}</label>
-        <label>Account status<span style="display:flex;align-items:center;gap:8px;font-weight:normal">{{ form.is_active }} Active account</span></label>
+        <label>Account status<span style="display:flex;align-items:center;gap:8px;font-weight:normal">{{ form.is_active }} Active account</span>{{ form.is_active.errors }}</label>
       </div>
     </section>
 
     <section class="access-card" style="margin-top:18px">
       <h2>Access preset</h2>
+      {% if not form.can_assign_permissions %}<div class="preset-help" style="background:#fff8ed;margin-bottom:12px"><strong>Access is locked.</strong> Your account can manage staff details but is not allowed to assign permissions. New accounts start with no access until the owner or a permitted manager sets it.</div>{% endif %}
       <label>{{ form.preset.label }}{{ form.preset }}<small>{{ form.preset.help_text }}</small>{{ form.preset.errors }}</label>
       <div class="preset-help">The preset is only a starting point. Every checkbox below remains editable before saving.</div>
     </section>
@@ -38,7 +39,7 @@
         <div class="permission-list">
           {% for entry in entries %}
           <div class="permission-item {% if entry.sensitive %}sensitive{% endif %}">
-            <input id="permission-{{ entry.permission.pk }}" type="checkbox" name="permissions" value="{{ entry.permission.pk }}" data-code="{{ entry.codename }}" {% if entry.permission.pk|stringformat:'s' in form.permissions.value %}checked{% endif %}>
+            <input id="permission-{{ entry.permission.pk }}" type="checkbox" name="permissions" value="{{ entry.permission.pk }}" data-code="{{ entry.codename }}" {% if entry.permission.pk|stringformat:'s' in form.permissions.value %}checked{% endif %}{% if not form.can_assign_permissions %} disabled{% endif %}>
             <label class="permission-label" for="permission-{{ entry.permission.pk }}"><strong>{{ entry.label }}{% if entry.sensitive %} ⚠{% endif %}</strong><small>{{ entry.codename }}</small></label>
             <button type="button" class="permission-info" aria-label="Explain {{ entry.label }}" aria-expanded="false" data-title="{{ entry.label }}" data-description="{{ entry.description }}">i</button>
           </div>
@@ -60,9 +61,10 @@
 </div>
 </form>
 <div class="permission-popover" id="permission-popover" role="tooltip" hidden><strong id="popover-title"></strong><span id="popover-description"></span></div>
+{{ preset_permissions|json_script:"preset-permissions" }}
 <script>
 (() => {
- const presets={cashier:['access_pos','create_sale','view_own_sales','view_customers','create_customers'],senior_cashier:['access_pos','create_sale','apply_discount','view_own_sales','view_all_sales','reverse_sale','view_customers','create_customers','edit_customers'],inventory_counter:['view_products','view_stock','view_assigned_stocktakes','count_assigned_zones','create_products_during_stocktake','complete_stocktake_zones'],storekeeper:['view_products','create_products','edit_products','view_stock','receive_stock','adjust_stock','view_stock_movements','manage_categories','view_assigned_stocktakes','count_assigned_zones','create_products_during_stocktake','complete_stocktake_zones'],inventory_supervisor:['view_products','create_products','edit_products','change_selling_price','view_cost_price','change_cost_price','view_stock','receive_stock','adjust_stock','view_stock_movements','manage_categories','view_assigned_stocktakes','count_assigned_zones','create_products_during_stocktake','complete_stocktake_zones','view_all_stocktake_zones','create_stocktakes','assign_stocktake_teams','start_stocktakes','review_stocktake_counts']};
+ const presets=JSON.parse(document.getElementById('preset-permissions').textContent||'{}');
  const boxes=[...document.querySelectorAll('input[name=permissions]')],count=document.getElementById('permission-count'),summary=document.getElementById('permission-summary'),preset=document.getElementById('id_preset');
  function refresh(){const selected=boxes.filter(b=>b.checked);count.textContent=selected.length;summary.textContent=selected.length?`${selected.length} capabilities will be available to this account.`:'No permissions selected.';}
  preset?.addEventListener('change',()=>{const codes=presets[preset.value];if(!codes||preset.value==='custom')return;boxes.forEach(box=>box.checked=codes.includes(box.dataset.code));refresh();});

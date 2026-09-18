@@ -9,6 +9,15 @@ from .forms import ProductForm, ReceiveStockForm
 from .models import Category, Product, Sale, SaleItem, StockMovement, UserProfile
 
 
+def grant(user, *codenames):
+    """Give a user specific inventory permissions."""
+    from django.contrib.auth.models import Permission
+    user.user_permissions.add(*Permission.objects.filter(
+        content_type__app_label="inventory", codename__in=codenames
+    ))
+    return User.objects.get(pk=user.pk)
+
+
 def make_product(barcode="1001", selling_price="10.00", reorder_level=5, stock=0):
     product = Product.objects.create(
         name=f"Item {barcode}",
@@ -178,6 +187,8 @@ class ProductViewTests(TestCase):
 class CheckoutTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user("cashier", password="pw")
+        grant(self.user, "access_pos", "create_sale", "sync_offline_sales",
+              "view_own_sales", "view_all_sales", "apply_discount", "reverse_sale")
         self.client.force_login(self.user)
         self.product = make_product(barcode="4001", selling_price="10.00", stock=5)
 
@@ -254,7 +265,7 @@ class CheckoutTests(TestCase):
         self.assertEqual(sale.status, Sale.STATUS_COMPLETED)
 
         # Revert the sale
-        response = self.client.post(reverse("sale_revert", args=[sale.pk]))
+        response = self.client.post(reverse("sale_revert", args=[sale.pk]), {"reversal_reason": "Customer returned goods"})
         self.assertRedirects(response, reverse("sale_receipt", args=[sale.pk]))
         sale.refresh_from_db()
         self.assertEqual(sale.status, Sale.STATUS_REVERTED)
@@ -264,10 +275,10 @@ class CheckoutTests(TestCase):
         self._add_to_cart(1)
         self.client.post(reverse("pos_checkout"), {"amount_paid": "10.00", "cashier_name": "Sam"})
         sale = Sale.objects.get()
-        self.client.post(reverse("sale_revert", args=[sale.pk]))
+        self.client.post(reverse("sale_revert", args=[sale.pk]), {"reversal_reason": "Customer returned goods"})
         
         # Try reverting again
-        response = self.client.post(reverse("sale_revert", args=[sale.pk]))
+        response = self.client.post(reverse("sale_revert", args=[sale.pk]), {"reversal_reason": "Customer returned goods"})
         self.assertRedirects(response, reverse("sale_receipt", args=[sale.pk]))
         # Ensure it didn't add stock again
         self.assertEqual(self.product.stock_on_hand, 5)

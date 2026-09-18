@@ -19,6 +19,10 @@ STOCKTAKE_ENTRY_PERMISSIONS = (
 )
 
 
+POS_LOOKUP_ENDPOINTS = {"api_product_search", "api_active_catalog"}
+POS_LOOKUP_PERMISSIONS = ("access_pos", "view_products")
+
+
 class GranularPermissionMiddleware:
     """Enforce mapped permissions while preserving legacy-role compatibility."""
 
@@ -31,6 +35,13 @@ class GranularPermissionMiddleware:
     def _has_required_access(self, user, url_name, codename):
         if url_name in {"stocktake_list", "stocktake_detail"}:
             return self._can_enter_stocktake(user)
+        if url_name in POS_LOOKUP_ENDPOINTS:
+            # The checkout screen cannot work without looking products up, so
+            # anyone allowed to use the POS may read the catalogue it sells from.
+            return any(has_access(user, code) for code in POS_LOOKUP_PERMISSIONS)
+        if url_name in {"sale_detail", "sale_receipt"}:
+            # The view itself limits which sales are visible.
+            return has_access(user, "view_own_sales") or has_access(user, "view_all_sales")
         return has_access(user, codename)
 
     def _landing_page(self, user):
@@ -66,6 +77,10 @@ class GranularPermissionMiddleware:
                         {"error": "Your account does not have permission for this action."},
                         status=403,
                     )
-                messages.error(request, "Access denied. Your account does not have permission for that action.")
+                if url_name != "dashboard":
+                    # Everyone lands on the dashboard after login. Staff without
+                    # reporting access are simply sent to their own home page,
+                    # without an "access denied" error on every sign-in.
+                    messages.error(request, "Access denied. Your account does not have permission for that action.")
                 return redirect(self._landing_page(request.user))
         return self.get_response(request)

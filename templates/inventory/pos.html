@@ -174,10 +174,23 @@
       .catch(err => console.warn('Service Worker registration failed:', err));
   }
 
+  // Escape anything that came from the database before it goes into HTML.
+  const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[ch]);
+
   // --- LOCAL STORAGE STATE MANAGEMENT ---
-  const STORAGE_KEY_CART = 'pos_active_cart';
+  // Keys are per staff account: tills are shared, and one cashier must never
+  // inherit another's cart or unsent sales.
+  const POS_USER_KEY = 'u{{ user.pk }}';
+  const STORAGE_KEY_CART = `pos_active_cart:${POS_USER_KEY}`;
   const STORAGE_KEY_CATALOG = 'pos_product_catalog';
-  const STORAGE_KEY_PENDING = 'pos_pending_sales';
+  const STORAGE_KEY_PENDING = `pos_pending_sales:${POS_USER_KEY}`;
+
+  // Clear state written by older versions that was shared between accounts.
+  ['pos_active_cart', 'pos_pending_sales'].forEach((legacyKey) => {
+    try { localStorage.removeItem(legacyKey); } catch (_) {}
+  });
 
   let localCart = JSON.parse(localStorage.getItem(STORAGE_KEY_CART) || '[]');
   let productCatalog = JSON.parse(localStorage.getItem(STORAGE_KEY_CATALOG) || '[]');
@@ -230,16 +243,31 @@
         body: JSON.stringify({ sales: pendingSales })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.synced && data.synced.length > 0) {
-          const syncedReceipts = new Set(data.synced.map(s => s.temp_receipt));
-          pendingSales = pendingSales.filter(s => !syncedReceipts.has(s.temp_receipt));
-          savePendingSalesState();
-          refreshCatalog();
-          if (typeof playSound === 'function') playSound('success');
-          alert(`Successfully synced ${data.synced.length} offline transactions to server!`);
-        }
+      let data = null;
+      try { data = await res.json(); } catch (_) { data = null; }
+
+      if (res.status === 401 || res.status === 403) {
+        document.getElementById("sync-status-text").innerText =
+          "This account cannot submit sales. Ask the shop owner to check your permissions.";
+        alert(data?.error || "This account is not allowed to submit sales.");
+        return;
+      }
+
+      if (data && data.synced && data.synced.length > 0) {
+        const syncedReceipts = new Set(data.synced.map(s => s.temp_receipt));
+        pendingSales = pendingSales.filter(s => !syncedReceipts.has(s.temp_receipt));
+        savePendingSalesState();
+        refreshCatalog();
+        if (typeof playSound === 'function') playSound('success');
+        alert(`Successfully synced ${data.synced.length} offline transactions to server!`);
+      }
+
+      // Sales the server rejected stay queued, but the cashier must be told why.
+      if (data && data.errors && data.errors.length > 0) {
+        const first = data.errors[0];
+        document.getElementById("sync-status-text").innerText =
+          `${data.errors.length} sale(s) rejected: ${first.error}`;
+        alert(`${data.errors.length} offline sale(s) could not be saved. First problem: ${first.error}`);
       }
     } catch (e) {
       console.warn("Sync failed:", e);
@@ -312,12 +340,12 @@
 
       tr.innerHTML = `
         <td style="width: 60px; vertical-align: middle;">
-          ${item.image_url ? `<img src="${item.image_url}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line);">` : `<div style="width: 50px; height: 50px; background: #eef2f0; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted); font-size: 22px; border: 1px solid var(--line);">📦</div>`}
+          ${item.image_url ? `<img src="${esc(item.image_url)}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line);">` : `<div style="width: 50px; height: 50px; background: #eef2f0; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted); font-size: 22px; border: 1px solid var(--line);">📦</div>`}
         </td>
         <td style="vertical-align: middle;">
-          <span style="font-size: 16px; font-weight: bold; color: var(--ink);">${item.name}</span>
-          ${item.variant ? `<br><span style="font-size: 13px; font-weight: bold; color: var(--accent); background: #e8f3f1; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px;">${item.variant}</span>` : ''}
-          <br><small style="margin-top: 4px; font-size: 11px;">${item.barcode}</small>
+          <span style="font-size: 16px; font-weight: bold; color: var(--ink);">${esc(item.name)}</span>
+          ${item.variant ? `<br><span style="font-size: 13px; font-weight: bold; color: var(--accent); background: #e8f3f1; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px;">${esc(item.variant)}</span>` : ''}
+          <br><small style="margin-top: 4px; font-size: 11px;">${esc(item.barcode)}</small>
         </td>
         <td style="font-size: 18px; font-weight: bold; vertical-align: middle; text-align: center;">
           <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
@@ -553,7 +581,7 @@
       const tr = document.createElement("tr");
       tr.style.borderBottom = "1px dashed var(--line)";
       tr.innerHTML = `
-        <td style="padding: 6px 0;">${item.name} ${item.variant ? `(${item.variant})` : ''}</td>
+        <td style="padding: 6px 0;">${esc(item.name)} ${item.variant ? `(${esc(item.variant)})` : ''}</td>
         <td style="text-align: right; padding: 6px 0;">${item.quantity}</td>
         <td style="text-align: right; padding: 6px 0;">₦${lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
       `;
@@ -605,7 +633,9 @@
       }))
     };
 
-    // Attempt direct online checkout sync
+    // Attempt direct online checkout. Only a genuine network failure may fall
+    // through to the offline queue: a sale the server refused must be reported,
+    // never silently parked in this browser.
     if (navigator.onLine) {
       try {
         const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
@@ -618,18 +648,32 @@
           body: JSON.stringify({ sales: [salePayload] })
         });
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.synced && data.synced.length > 0) {
-            const result = data.synced[0];
-            localCart = [];
-            saveCartState();
-            window.location.href = `/sales/${result.sale_id}/receipt/`;
-            return;
-          }
+        let data = null;
+        try { data = await res.json(); } catch (_) { data = null; }
+
+        if (res.ok && data && data.synced && data.synced.length > 0) {
+          const result = data.synced[0];
+          localCart = [];
+          saveCartState();
+          window.location.href = `/sales/${result.sale_id}/receipt/`;
+          return;
         }
+
+        if (res.status === 401 || res.status === 403) {
+          alert(data?.error || "Your account is not allowed to complete sales. Ask the shop owner to check your permissions.");
+          return;
+        }
+
+        const rejection = data?.errors?.[0]?.error || data?.error;
+        if (rejection) {
+          alert(`Sale not completed: ${rejection}`);
+          return;
+        }
+        alert("The server did not accept this sale. Please try again.");
+        return;
       } catch (err) {
-        console.warn("Online checkout submission failed, queueing offline sale:", err);
+        // Request never reached the server; queue it below.
+        console.warn("Network failure during checkout, queueing offline sale:", err);
       }
     }
 
@@ -702,8 +746,8 @@
 
       row.innerHTML = `
         <div>
-          <span style="font-weight:bold;">${product.name}</span> ${product.variant ? `<span style="font-size:12px; font-weight:bold; color:var(--accent); background:#e8f3f1; padding:2px 6px; border-radius:4px;">${product.variant}</span>` : ''}
-          <br><small style="color:var(--muted); font-size:12px;">Barcode: ${product.barcode} | Price: ₦${parseFloat(product.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Stock: ${product.stock}</small>
+          <span style="font-weight:bold;">${esc(product.name)}</span> ${product.variant ? `<span style="font-size:12px; font-weight:bold; color:var(--accent); background:#e8f3f1; padding:2px 6px; border-radius:4px;">${esc(product.variant)}</span>` : ''}
+          <br><small style="color:var(--muted); font-size:12px;">Barcode: ${esc(product.barcode)} | Price: ₦${parseFloat(product.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Stock: ${product.stock}</small>
         </div>
         <button type="button" class="button primary" style="padding: 4px 10px; font-size: 12px;">Select</button>
       `;

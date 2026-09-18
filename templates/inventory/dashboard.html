@@ -10,9 +10,10 @@
   <article><span>{{ product_count }}</span><p>Products</p></article>
   <article><span>{{ low_stock_count }}</span><p>Low stock</p></article>
   <article><span>{{ sale_count }}</span><p>Sales</p></article>
-  <article><span>₦{{ stock_value|intcomma }}</span><p>Stock value</p></article>
+  {% if perms.inventory.view_stock_valuation %}<article><span>₦{{ stock_value|intcomma }}</span><p>Stock value</p></article>{% endif %}
 </section>
 
+{% if perms.inventory.view_stock_movements %}
 <section class="panel">
   <h2>Recent Stock Movements</h2>
   <table>
@@ -32,4 +33,5 @@
     </tbody>
   </table>
 </section>
+{% endif %}
 {% endblock %}

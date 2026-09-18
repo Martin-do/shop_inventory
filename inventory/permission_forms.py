@@ -1,7 +1,9 @@
 from django import forms
 from django.contrib.auth.models import Group, Permission, User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 
-from .access_control import ALL_CODENAMES, PERMISSION_SECTIONS, PRESETS, SENSITIVE_PERMISSIONS
+from .access_control import ALL_CODENAMES, PERMISSION_SECTIONS, PRESETS, SENSITIVE_PERMISSIONS, has_access
 from .models import UserProfile
 
 
@@ -75,6 +77,11 @@ class StaffAccessForm(forms.ModelForm):
         model = User
         fields = ["username", "first_name", "last_name", "email", "is_active"]
 
+    @property
+    def can_assign_permissions(self):
+        """Editing identity details and choosing access are separate rights."""
+        return self.actor is None or has_access(self.actor, "assign_permissions")
+
     def __init__(self, *args, actor=None, **kwargs):
         self.actor = actor
         super().__init__(*args, **kwargs)
@@ -131,6 +138,10 @@ class StaffAccessForm(forms.ModelForm):
             self.fields["password"].required = True
             self.fields["password"].help_text = "Required for a new staff account."
 
+        if not self.can_assign_permissions:
+            self.fields["permissions"].disabled = True
+            self.fields["preset"].disabled = True
+
         self.permission_sections = []
         by_code = {p.codename: p for p in permission_qs}
         for section, rows in PERMISSION_SECTIONS.items():
@@ -148,6 +159,29 @@ class StaffAccessForm(forms.ModelForm):
                     })
             self.permission_sections.append((section, entries))
 
+    def clean_is_active(self):
+        active = self.cleaned_data.get("is_active")
+        if not active and self.actor and self.instance.pk and self.instance.pk == self.actor.pk:
+            raise forms.ValidationError("You cannot deactivate your own account.")
+        return active
+
+    def clean_password(self):
+        """Apply the project's password rules to staff-set passwords."""
+        password = self.cleaned_data.get("password")
+        if not password:
+            return password
+        candidate = User(
+            username=self.data.get("username", ""),
+            first_name=self.data.get("first_name", ""),
+            last_name=self.data.get("last_name", ""),
+            email=self.data.get("email", ""),
+        )
+        try:
+            validate_password(password, candidate)
+        except DjangoValidationError as error:
+            raise forms.ValidationError(list(error.messages))
+        return password
+
     def clean_permissions(self):
         selected = self.cleaned_data.get("permissions")
         if self.actor and not self.actor.is_superuser:
@@ -158,16 +192,27 @@ class StaffAccessForm(forms.ModelForm):
         return selected
 
     def save(self, commit=True):
+        creating = self.instance.pk is None
         user = super().save(commit=False)
         password = self.cleaned_data.get("password")
         if password:
             user.set_password(password)
-        user.is_staff = True
+        # Access comes from the granular permissions below. is_staff would also
+        # open the Django admin site, so only real superusers keep it.
+        user.is_staff = user.is_superuser
         if commit:
             user.save()
-            profile, _ = UserProfile.objects.get_or_create(user=user)
-            profile.role = UserProfile.ROLE_ADMIN
-            profile.save(update_fields=["role"])
+            UserProfile.objects.get_or_create(user=user)
+
+            if not self.can_assign_permissions:
+                if creating:
+                    # A brand-new account must never fall back to the legacy
+                    # role defaults, which grant cashier access. Mark it
+                    # configured with an empty permission set instead.
+                    group, _ = Group.objects.get_or_create(name=PRESETS["custom"]["label"])
+                    group.permissions.clear()
+                    user.groups.add(group)
+                return user
 
             preset = self.cleaned_data.get("preset") or "custom"
             selected = self.cleaned_data.get("permissions")

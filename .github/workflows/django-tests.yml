@@ -30,9 +30,23 @@ jobs:
 
       - name: Check for missing migrations
         run: python manage.py makemigrations --check --dry-run
+        env:
+          DEBUG: "1"
 
       - name: Run Django system checks
         run: python manage.py check
+        env:
+          DEBUG: "1"
+
+      - name: Check production settings load
+        run: python manage.py check
+        env:
+          DEBUG: "0"
+          SECRET_KEY: ci-only-not-a-real-secret-key-0123456789abcdef
+          ALLOWED_HOSTS: example.com
+          CSRF_TRUSTED_ORIGINS: https://example.com
 
       - name: Run tests
         run: python manage.py test
+        env:
+          DEBUG: "1"

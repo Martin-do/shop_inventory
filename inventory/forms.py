@@ -31,8 +31,9 @@ class ProductForm(forms.ModelForm):
             "variant": forms.TextInput(attrs={"placeholder": "e.g. 1L, 1.5L, Pack of 6"}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.user = user
         self.fields["category"].required = False
         self.fields["category"].empty_label = "— Select a category —"
         self.fields["cost_price"].required = False
@@ -49,6 +50,36 @@ class ProductForm(forms.ModelForm):
             self.fields.pop("total_stock")
             self.fields.pop("adjustment_note")
             self.order_fields(["name", "variant", "barcode", "category", "new_category", "cost_price", "selling_price", "reorder_level", "image", "opening_stock"])
+        self._apply_field_permissions()
+
+    def _apply_field_permissions(self):
+        """Hide or lock price and stock fields the signed-in account may not use.
+
+        A locked field is submitted back as its current value, so a hand-crafted
+        POST cannot change it. With no user (internal use) nothing is restricted.
+        """
+        if self.user is None:
+            return
+        from .access_control import has_access
+
+        editing = bool(self.instance.pk)
+
+        # Selling price is needed to create a product, but changing it later is a pricing decision.
+        if editing and not has_access(self.user, "change_selling_price"):
+            self.fields["selling_price"].disabled = True
+
+        can_change_cost = has_access(self.user, "change_cost_price")
+        can_see_cost = can_change_cost or has_access(self.user, "view_cost_price")
+        if not can_see_cost or (not editing and not can_change_cost):
+            self.fields.pop("cost_price", None)
+        elif not can_change_cost:
+            self.fields["cost_price"].disabled = True
+
+        if not has_access(self.user, "adjust_stock"):
+            self.fields.pop("total_stock", None)
+            self.fields.pop("adjustment_note", None)
+            if not editing and not has_access(self.user, "receive_stock"):
+                self.fields.pop("opening_stock", None)
 
     def clean_new_category(self):
         return self.cleaned_data.get("new_category", "").strip()
@@ -110,6 +141,13 @@ class ReceiveStockForm(forms.Form):
     cost_price = forms.DecimalField(min_value=Decimal("0.00"), decimal_places=2, max_digits=12, required=False, initial=Decimal("0.00"))
     selling_price = forms.DecimalField(min_value=Decimal("0.00"), decimal_places=2, max_digits=12, required=False)
     reorder_level = forms.IntegerField(min_value=0, initial=5, required=False)
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user is not None:
+            from .access_control import has_access
+            if not has_access(user, "change_cost_price"):
+                self.fields.pop("cost_price", None)
 
     def clean_barcode(self):
         return self.cleaned_data["barcode"].strip()

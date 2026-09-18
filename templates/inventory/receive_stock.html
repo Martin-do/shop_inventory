@@ -34,10 +34,10 @@
     <label>New Category {{ form.new_category }}</label>
     {{ form.new_category.errors }}
     <div style="display: flex; gap: 12px;">
-      <label style="flex: 1;">Cost Price (₦) {{ form.cost_price }}</label>
+      {% if form.cost_price %}<label style="flex: 1;">Cost Price (₦) {{ form.cost_price }}</label>{% endif %}
       <label style="flex: 1;">Selling Price (₦) {{ form.selling_price }}</label>
     </div>
-    {{ form.cost_price.errors }}
+    {% if form.cost_price %}{{ form.cost_price.errors }}{% endif %}
     {{ form.selling_price.errors }}
     <label>Reorder Level {{ form.reorder_level }}</label>
     {{ form.reorder_level.errors }}

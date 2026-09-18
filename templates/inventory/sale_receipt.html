@@ -80,7 +80,7 @@
 
   <div class="actions-panel">
     <button class="btn btn-primary" type="button" onclick="window.print()">Print Receipt</button>
-    {% if sale.status == 'completed' and user.role == 'admin' %}
+    {% if sale.status == 'completed' and perms.inventory.reverse_sale %}
       <form method="post" action="{% url 'sale_revert' sale.id %}" class="reversal-box" id="reversal-form">
         {% csrf_token %}
         <label for="reversal-reason">Reason for reversal</label>

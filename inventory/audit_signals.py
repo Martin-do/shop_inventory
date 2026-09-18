@@ -6,6 +6,7 @@ from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 from .audit_context import get_current_request
+from .login_throttle import client_ip
 from .models import AuditLog, Category, Customer, Product, Sale, SaleItem, StockMovement, StoreSettings, UserProfile
 
 AUDITED_MODELS = (Category, Customer, Product, Sale, SaleItem, StockMovement, StoreSettings, UserProfile)
@@ -39,8 +40,7 @@ def _request_details():
     if not request:
         return {}, None
     actor = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
-    ip = forwarded or request.META.get("REMOTE_ADDR")
+    ip = client_ip(request)
     return {
         "request_method": request.method,
         "request_path": request.path[:255],

@@ -4,7 +4,11 @@ Local-first inventory and checkout app for a small shop.
 
 ## Development
 
+Local runs need `DEBUG=1` (the app refuses to start without a `SECRET_KEY` otherwise, so a
+production server can never come up in debug mode by accident):
+
 ```powershell
+$env:DEBUG = "1"
 python -m venv .venv
 .\.venv\Scripts\pip install -r requirements.txt
 .\.venv\Scripts\python manage.py migrate

@@ -8,6 +8,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from .access_control import has_access
 from .hardened_forms import AuditedProductForm
 from .models import Product, Sale, SaleItem, StockMovement, UserProfile
 from .views import api_active_catalog as legacy_active_catalog
@@ -29,7 +30,7 @@ def api_active_catalog(request):
 def product_update(request, pk):
     product = get_object_or_404(Product, pk=pk)
     before_stock = product.stock_on_hand
-    form = AuditedProductForm(request.POST or None, request.FILES or None, instance=product)
+    form = AuditedProductForm(request.POST or None, request.FILES or None, instance=product, user=request.user)
     if request.method == "POST" and form.is_valid():
         product = form.save()
         after_stock = product.stock_on_hand
@@ -89,24 +90,20 @@ def export_sales_csv(request):
 
 
 def _can_revert_sale(user):
-    """Allow configured administrators; retain bootstrap compatibility before roles exist."""
-    if not user.is_authenticated:
-        return False, False
-    try:
-        return user.profile.role == UserProfile.ROLE_ADMIN, False
-    except UserProfile.DoesNotExist:
-        # Early versions of the app had no role profiles. Permit the legacy
-        # reversal workflow only while the database has no configured roles.
-        bootstrap_mode = not UserProfile.objects.exists()
-        return bootstrap_mode, bootstrap_mode
+    """Require the 'reverse completed sales' permission.
+
+    Staff accounts carry an administrator profile role for historical reasons,
+    so the role must never be used to authorise a reversal. GranularPermission-
+    Middleware checks the same permission before this view runs.
+    """
+    return user.is_authenticated and has_access(user, "reverse_sale")
 
 
 @require_POST
 @transaction.atomic
 def sale_revert(request, sale_id):
-    allowed, bootstrap_mode = _can_revert_sale(request.user)
-    if not allowed:
-        messages.error(request, "Only an administrator can revert a sale.")
+    if not _can_revert_sale(request.user):
+        messages.error(request, "Your account is not allowed to reverse sales.")
         return redirect("pos")
 
     sale = get_object_or_404(Sale.objects.select_for_update(), pk=sale_id)
@@ -115,8 +112,6 @@ def sale_revert(request, sale_id):
         return redirect("sale_receipt", sale_id=sale.pk)
 
     reason = request.POST.get("reversal_reason", "").strip()
-    if bootstrap_mode and not reason:
-        reason = "Legacy reversal before staff roles were configured"
     if len(reason) < 5:
         messages.error(request, "Enter a clear reversal reason of at least 5 characters.")
         return redirect("sale_receipt", sale_id=sale.pk)
