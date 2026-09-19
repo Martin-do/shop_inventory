@@ -47,6 +47,8 @@ jobs:
           CSRF_TRUSTED_ORIGINS: https://example.com
 
       - name: Run tests
-        run: python manage.py test
+        # Diagnostic: name each test as it starts and dump a stack trace if the
+        # run hangs, so a stuck test is identified instead of timing out silently.
+        run: timeout -s ABRT 240 python -X faulthandler manage.py test -v 2
         env:
           DEBUG: "1"
