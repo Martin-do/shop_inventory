@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
 from django.db import transaction
+from django.core.paginator import Paginator
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -338,6 +339,44 @@ def pos_checkout(request):
     request.session["cart"] = {}
     messages.success(request, f"Sale #{sale.pk} completed. Change: {sale.change_due}.")
     return redirect("sale_receipt", sale_id=sale.pk)
+
+
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
+def sale_list(request):
+    """List sales the account is allowed to see, so a receipt can be reopened later.
+
+    Without this page, a completed sale was only reachable at the moment of
+    checkout or reversal; there was no way to look one up afterwards to reprint
+    it or answer a customer's question about it.
+    """
+    sales = Sale.objects.select_related("customer").order_by("-created_at")
+    if not has_access(request.user, "view_all_sales"):
+        if has_access(request.user, "view_own_sales"):
+            sales = sales.filter(
+                Q(cashier=request.user) | Q(cashier__isnull=True, cashier_name__in=[
+                    request.user.get_full_name(), request.user.username,
+                ])
+            )
+        else:
+            sales = sales.none()
+
+    query = request.GET.get("q", "").strip()
+    if query:
+        sales = sales.filter(
+            Q(receipt_number__icontains=query)
+            | Q(cashier_name__icontains=query)
+            | Q(customer__name__icontains=query)
+        )
+    status = request.GET.get("status", "").strip()
+    if status in (Sale.STATUS_COMPLETED, Sale.STATUS_REVERTED):
+        sales = sales.filter(status=status)
+
+    paginator = Paginator(sales, 50)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    return render(request, "inventory/sale_list.html", {
+        "page_obj": page_obj, "query": query, "selected_status": status,
+        "status_choices": Sale.STATUS_CHOICES,
+    })
 
 
 @role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])

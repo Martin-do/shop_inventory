@@ -39,7 +39,7 @@ class GranularPermissionMiddleware:
             # The checkout screen cannot work without looking products up, so
             # anyone allowed to use the POS may read the catalogue it sells from.
             return any(has_access(user, code) for code in POS_LOOKUP_PERMISSIONS)
-        if url_name in {"sale_detail", "sale_receipt"}:
+        if url_name in {"sale_list", "sale_detail", "sale_receipt"}:
             # The view itself limits which sales are visible.
             return has_access(user, "view_own_sales") or has_access(user, "view_all_sales")
         return has_access(user, codename)

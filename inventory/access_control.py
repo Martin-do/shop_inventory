@@ -132,7 +132,7 @@ URL_PERMISSION_MAP = {
     "stocktake_assign_zone": "assign_stocktake_teams", "stocktake_start": "start_stocktakes", "stocktake_count_zone": "count_assigned_zones",
     "stocktake_save_count": "count_assigned_zones", "stocktake_quick_product": "create_products_during_stocktake", "stocktake_complete_zone": "complete_stocktake_zones",
     "stocktake_submit_review": "review_stocktake_counts", "stocktake_review_count": "review_stocktake_counts", "stocktake_apply": "apply_stocktakes",
-    "sale_detail": "view_own_sales", "sale_receipt": "view_own_sales", "sale_revert": "reverse_sale",
+    "sale_list": "view_own_sales", "sale_detail": "view_own_sales", "sale_receipt": "view_own_sales", "sale_revert": "reverse_sale",
     "customer_list": "view_customers", "customer_create": "create_customers", "customer_update": "edit_customers",
     "reports": "view_sales_reports", "export_sales_csv": "export_sales", "export_products_csv": "export_products",
     "audit_history": "view_audit_history", "audit_detail": "view_audit_history", "audit_export_csv": "export_audit_history",

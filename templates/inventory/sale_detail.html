@@ -35,6 +35,7 @@
     </tbody>
   </table>
 
+  <p style="margin-top:16px"><a class="button" href="{% url 'sale_receipt' sale.id %}">View / Reprint Receipt</a></p>
   {% if sale.status == 'completed' and perms.inventory.reverse_sale %}
     <form method="post" action="{% url 'sale_revert' sale.id %}" onsubmit="return confirm('Revert this sale? Stock levels will be restored and your name recorded.');" style="margin-top: 20px;">
       {% csrf_token %}

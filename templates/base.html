@@ -14,6 +14,7 @@
     <nav>
       {% if user.is_authenticated %}
         {% if perms.inventory.access_pos %}<a href="{% url 'pos' %}">POS</a>{% endif %}
+        {% if perms.inventory.view_own_sales or perms.inventory.view_all_sales %}<a href="{% url 'sale_list' %}">Sales</a>{% endif %}
         {% if perms.inventory.view_customers %}<a href="{% url 'customer_list' %}">Customers</a>{% endif %}
         {% if perms.inventory.receive_stock %}<a href="{% url 'receive_stock' %}">Receive</a>{% endif %}
         {% if perms.inventory.view_products %}<a href="{% url 'product_list' %}">Products</a>{% endif %}
