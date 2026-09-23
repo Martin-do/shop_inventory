@@ -1,5 +1,6 @@
 @echo off
 cd /d "%~dp0"
+set DEBUG=1
 echo ===========================================
 echo         SHOP INVENTORY UPDATE TOOL
 echo ===========================================

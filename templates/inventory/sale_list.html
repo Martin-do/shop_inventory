@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Sales{% endblock %}
+{% block content %}
+<section class="heading">
+  <div>
+    <h1>Sales</h1>
+    <p>{% if perms.inventory.view_all_sales %}Every completed and reverted sale.{% else %}Sales completed on your own account.{% endif %}</p>
+  </div>
+</section>
+
+<form method="get" class="panel form" style="display:grid; grid-template-columns:2fr 1fr auto; gap:10px; align-items:end; margin-bottom:16px;">
+  <label>Search<input name="q" value="{{ query }}" placeholder="Receipt number, cashier or customer"></label>
+  <label>Status<select name="status"><option value="">All</option>{% for value, label in status_choices %}<option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <button class="button primary" type="submit">Filter</button>
+</form>
+
+<section class="panel" style="overflow-x:auto;">
+  <table class="cart">
+    <thead><tr><th>Receipt</th><th>Date</th><th>Cashier</th><th>Customer</th><th>Total</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for sale in page_obj %}
+      <tr>
+        <td>{{ sale.receipt_number|default:sale.pk }}</td>
+        <td>{{ sale.created_at|date:"Y-m-d H:i" }}</td>
+        <td>{{ sale.cashier_name|default:"-" }}</td>
+        <td>{{ sale.customer.name|default:"-" }}</td>
+        <td>₦{{ sale.total|intcomma }}</td>
+        <td>{% if sale.status == 'reverted' %}<span style="color:var(--danger);font-weight:700">Reverted</span>{% else %}Completed{% endif %}</td>
+        <td><a class="button" href="{% url 'sale_receipt' sale.pk %}">View / Print</a></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7">No sales match the selected filters.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if page_obj.has_other_pages %}
+<nav class="pagination" style="margin-top:12px; display:flex; gap:8px;">
+  {% if page_obj.has_previous %}<a class="button" href="?page={{ page_obj.previous_page_number }}&q={{ query }}&status={{ selected_status }}">Previous</a>{% endif %}
+  <span style="align-self:center;">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}<a class="button" href="?page={{ page_obj.next_page_number }}&q={{ query }}&status={{ selected_status }}">Next</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

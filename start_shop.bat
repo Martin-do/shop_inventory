@@ -1,5 +1,6 @@
 @echo off
 cd /d "%~dp0"
+set DEBUG=1
 if exist ".venv\Scripts\python.exe" (
   set PYTHON=.venv\Scripts\python.exe
 ) else (

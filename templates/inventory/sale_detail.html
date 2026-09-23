@@ -35,10 +35,13 @@
     </tbody>
   </table>
 
-  {% if sale.status == 'completed' %}
-    <form method="post" action="{% url 'sale_revert' sale.id %}" onsubmit="return confirm('Are you sure you want to revert/cancel this sale? Stock levels will be restored.');" style="margin-top: 20px;">
+  <p style="margin-top:16px"><a class="button" href="{% url 'sale_receipt' sale.id %}">View / Reprint Receipt</a></p>
+  {% if sale.status == 'completed' and perms.inventory.reverse_sale %}
+    <form method="post" action="{% url 'sale_revert' sale.id %}" onsubmit="return confirm('Revert this sale? Stock levels will be restored and your name recorded.');" style="margin-top: 20px;">
       {% csrf_token %}
-      <button class="button danger wide">Revert & Cancel Sale</button>
+      <label for="reversal-reason">Reason for reversal</label>
+      <input id="reversal-reason" name="reversal_reason" minlength="5" maxlength="180" required placeholder="e.g. Duplicate checkout or customer returned goods">
+      <button class="button danger wide" style="margin-top: 10px;">Revert &amp; Cancel Sale</button>
     </form>
   {% endif %}
 </section>

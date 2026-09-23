@@ -13,9 +13,12 @@ env/
 *.log
 staticfiles/
 
+.cache/
+
 # Environment / secrets
 .env
 .env.*
+!.env.example
 
 # Editor / OS
 .idea/

@@ -9,6 +9,15 @@ from .forms import ProductForm, ReceiveStockForm
 from .models import Category, Product, Sale, SaleItem, StockMovement, UserProfile
 
 
+def grant(user, *codenames):
+    """Give a user specific inventory permissions."""
+    from django.contrib.auth.models import Permission
+    user.user_permissions.add(*Permission.objects.filter(
+        content_type__app_label="inventory", codename__in=codenames
+    ))
+    return User.objects.get(pk=user.pk)
+
+
 def make_product(barcode="1001", selling_price="10.00", reorder_level=5, stock=0):
     product = Product.objects.create(
         name=f"Item {barcode}",
@@ -178,6 +187,8 @@ class ProductViewTests(TestCase):
 class CheckoutTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user("cashier", password="pw")
+        grant(self.user, "access_pos", "create_sale", "sync_offline_sales",
+              "view_own_sales", "view_all_sales", "apply_discount", "reverse_sale")
         self.client.force_login(self.user)
         self.product = make_product(barcode="4001", selling_price="10.00", stock=5)
 
@@ -254,7 +265,7 @@ class CheckoutTests(TestCase):
         self.assertEqual(sale.status, Sale.STATUS_COMPLETED)
 
         # Revert the sale
-        response = self.client.post(reverse("sale_revert", args=[sale.pk]))
+        response = self.client.post(reverse("sale_revert", args=[sale.pk]), {"reversal_reason": "Customer returned goods"})
         self.assertRedirects(response, reverse("sale_receipt", args=[sale.pk]))
         sale.refresh_from_db()
         self.assertEqual(sale.status, Sale.STATUS_REVERTED)
@@ -264,10 +275,10 @@ class CheckoutTests(TestCase):
         self._add_to_cart(1)
         self.client.post(reverse("pos_checkout"), {"amount_paid": "10.00", "cashier_name": "Sam"})
         sale = Sale.objects.get()
-        self.client.post(reverse("sale_revert", args=[sale.pk]))
+        self.client.post(reverse("sale_revert", args=[sale.pk]), {"reversal_reason": "Customer returned goods"})
         
         # Try reverting again
-        response = self.client.post(reverse("sale_revert", args=[sale.pk]))
+        response = self.client.post(reverse("sale_revert", args=[sale.pk]), {"reversal_reason": "Customer returned goods"})
         self.assertRedirects(response, reverse("sale_receipt", args=[sale.pk]))
         # Ensure it didn't add stock again
         self.assertEqual(self.product.stock_on_hand, 5)
@@ -280,17 +291,82 @@ from .backup_utils import create_backup_zip, run_backup_job
 
 class BackupTests(TestCase):
     def setUp(self):
+        import contextlib
+        import shutil
+        import sqlite3
+        import tempfile
+        from types import SimpleNamespace
+
         self.staff_user = User.objects.create_user("admin", password="pw", is_staff=True)
         self.cashier_user = User.objects.create_user("cashier", password="pw", is_staff=False)
         self.product = make_product(barcode="4001", selling_price="10.00", stock=5)
 
+        # Back up a small throwaway database file, not the test database: inside a
+        # test that one is held open by the test's own transaction, and SQLite's
+        # backup would wait on that lock forever.
+        self.workdir = tempfile.mkdtemp(prefix="backup-test-")
+        self.addCleanup(shutil.rmtree, self.workdir, ignore_errors=True)
+        self.source_db = os.path.join(self.workdir, "source.sqlite3")
+        with contextlib.closing(sqlite3.connect(self.source_db)) as conn:
+            conn.execute("CREATE TABLE marker (value TEXT)")
+            conn.execute("INSERT INTO marker VALUES ('backup-me')")
+            conn.commit()
+        media_dir = os.path.join(self.workdir, "media", "products")
+        os.makedirs(media_dir)
+        with open(os.path.join(media_dir, "item.jpg"), "wb") as handle:
+            handle.write(b"image-bytes")
+
+        fake_settings = SimpleNamespace(
+            DATABASES={"default": {"NAME": self.source_db}},
+            MEDIA_ROOT=os.path.join(self.workdir, "media"),
+        )
+        patcher = patch("inventory.backup_utils.settings", fake_settings)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_create_backup_zip(self):
+        import contextlib
+        import sqlite3
+        import zipfile
+
         zip_path, filename = create_backup_zip()
+        self.addCleanup(lambda: os.path.exists(zip_path) and os.remove(zip_path))
         self.assertTrue(os.path.exists(zip_path))
         self.assertTrue(filename.startswith("backup_"))
         self.assertTrue(filename.endswith(".zip"))
-        if os.path.exists(zip_path):
-            os.remove(zip_path)
+
+        with zipfile.ZipFile(zip_path) as archive:
+            names = archive.namelist()
+            self.assertIn("shop_inventory.sqlite3", names)
+            self.assertIn("media/products/item.jpg", names)
+            archive.extract("shop_inventory.sqlite3", self.workdir)
+
+        with contextlib.closing(sqlite3.connect(os.path.join(self.workdir, "shop_inventory.sqlite3"))) as restored:
+            self.assertEqual(restored.execute("SELECT value FROM marker").fetchone()[0], "backup-me")
+
+    def test_backup_gives_up_instead_of_hanging_when_database_is_locked(self):
+        import contextlib
+        import sqlite3
+        import threading
+
+        from .backup_utils import backup_sqlite
+
+        outcome = {}
+
+        def attempt():
+            try:
+                backup_sqlite(os.path.join(self.workdir, "copy.sqlite3"), timeout_seconds=0.5)
+            except Exception as error:  # noqa: BLE001 - the type is asserted below
+                outcome["error"] = error
+
+        # Another connection holds an exclusive lock on the database being backed up.
+        with contextlib.closing(sqlite3.connect(self.source_db, isolation_level=None)) as blocker:
+            blocker.execute("BEGIN EXCLUSIVE")
+            worker = threading.Thread(target=attempt, daemon=True)
+            worker.start()
+            worker.join(timeout=20)
+            self.assertFalse(worker.is_alive(), "backup_sqlite hung instead of giving up")
+        self.assertIsInstance(outcome.get("error"), (TimeoutError, sqlite3.OperationalError))
 
     def test_backup_views_permissions(self):
         response = self.client.post(reverse("trigger_manual_backup"))

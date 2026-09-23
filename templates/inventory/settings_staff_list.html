@@ -8,7 +8,7 @@
 
 <section class="panel" style="overflow:auto">
   <table>
-    <thead><tr><th>Staff member</th><th>Status</th><th>Access preset</th><th>Effective permissions</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Staff member</th><th>Status</th><th>Access preset</th><th>Effective permissions</th><th>Last login</th><th>Actions</th></tr></thead>
     <tbody>
       {% for row in access_rows %}
       <tr>
@@ -16,9 +16,10 @@
         <td>{% if row.user.is_active %}<span class="found" style="padding:4px 9px;font-size:13px">Active</span>{% else %}<span style="color:var(--danger);font-weight:700">Inactive</span>{% endif %}</td>
         <td>{% if row.user.is_superuser %}<strong>Owner / system administrator</strong>{% elif row.groups %}{{ row.groups|join:", " }}{% else %}<span style="color:var(--muted)">Custom access</span>{% endif %}</td>
         <td><strong>{{ row.permission_count }}</strong> capabilities</td>
-        <td>{% if perms.inventory.edit_staff %}<a class="button" href="{% url 'settings_staff_update' row.user.pk %}">Edit access</a>{% endif %}</td>
+        <td>{% if row.user.last_login %}{{ row.user.last_login|date:"M j, Y H:i" }}{% else %}<span style="color:var(--muted)">Never</span>{% endif %}</td>
+        <td>{% if perms.inventory.edit_staff and row.can_edit %}<a class="button" href="{% url 'settings_staff_update' row.user.pk %}">Edit access</a>{% endif %}</td>
       </tr>
-      {% empty %}<tr><td colspan="5">No staff accounts found.</td></tr>{% endfor %}
+      {% empty %}<tr><td colspan="6">No staff accounts found.</td></tr>{% endfor %}
     </tbody>
   </table>
 </section>

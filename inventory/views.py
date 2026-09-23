@@ -7,11 +7,13 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
 from django.db import transaction
+from django.core.paginator import Paginator
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from .access_control import can_view_sale, has_access, is_granularly_configured
 from .forms import (
     AddToCartForm, CheckoutForm, ProductForm, ReceiveStockForm,
     StoreSettingsForm, CustomerForm, CategoryForm, StaffForm
@@ -23,12 +25,20 @@ from django.contrib.auth.views import redirect_to_login
 
 
 def role_required(allowed_roles):
-    """Decorator to enforce role-based permissions (admin, stock_clerk, cashier)."""
+    """Legacy role gate, kept only for accounts that predate granular permissions.
+
+    Accounts configured in the permission editor are enforced by
+    GranularPermissionMiddleware and the per-view permission checks instead, so
+    this decorator must not second-guess them: their profile role is not a
+    meaningful access level.
+    """
     def decorator(view_func):
         @wraps(view_func)
         def _wrapped_view(request, *args, **kwargs):
             if not request.user.is_authenticated:
                 return redirect_to_login(request.get_full_path())
+            if request.user.is_superuser or is_granularly_configured(request.user):
+                return view_func(request, *args, **kwargs)
             role = getattr(request.user, "role", UserProfile.ROLE_CASHIER)
             if role in allowed_roles:
                 return view_func(request, *args, **kwargs)
@@ -91,7 +101,7 @@ def product_list(request):
 
 @role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
 def product_create(request):
-    form = ProductForm(request.POST or None, request.FILES or None)
+    form = ProductForm(request.POST or None, request.FILES or None, user=request.user)
     if request.method == "POST" and form.is_valid():
         product = form.save()
         opening_stock = form.cleaned_data.get("opening_stock") or 0
@@ -132,17 +142,20 @@ def product_toggle_active(request, pk):
 @role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
 def receive_stock(request):
     product = None
-    form = ReceiveStockForm()
+    form = ReceiveStockForm(user=request.user)
     is_new_unregistered = False
 
     if request.method == "POST":
-        form = ReceiveStockForm(request.POST)
+        form = ReceiveStockForm(request.POST, user=request.user)
         if form.is_valid():
             barcode = form.cleaned_data["barcode"]
             quantity = form.cleaned_data["quantity"]
             note = form.cleaned_data.get("note", "")
 
             product = Product.objects.filter(barcode=barcode, is_active=True).first()
+            if not product and not has_access(request.user, "create_products"):
+                messages.error(request, "That barcode is not in the catalogue, and your account cannot create products. Ask a colleague who can.")
+                return redirect("receive_stock")
             if not product:
                 cat = form.cleaned_data.get("category")
                 new_cat_name = form.cleaned_data.get("new_category", "").strip()
@@ -154,7 +167,8 @@ def receive_stock(request):
                     name=form.cleaned_data["name"].strip(),
                     variant=form.cleaned_data.get("variant", "").strip(),
                     category=cat,
-                    cost_price=form.cleaned_data.get("cost_price") or Decimal("0.00"),
+                    cost_price=(form.cleaned_data.get("cost_price") or Decimal("0.00"))
+                    if has_access(request.user, "change_cost_price") else Decimal("0.00"),
                     selling_price=form.cleaned_data["selling_price"],
                     reorder_level=form.cleaned_data.get("reorder_level") or 5,
                 )
@@ -178,7 +192,7 @@ def receive_stock(request):
         product = Product.objects.filter(barcode=barcode, is_active=True).first()
         if not product:
             is_new_unregistered = True
-        form = ReceiveStockForm(initial={"barcode": barcode, "quantity": 1})
+        form = ReceiveStockForm(initial={"barcode": barcode, "quantity": 1}, user=request.user)
 
     return render(
         request,
@@ -284,6 +298,10 @@ def pos_checkout(request):
         messages.error(request, "Discount cannot exceed cart subtotal.")
         return redirect("pos")
 
+    if discount_amount and not has_access(request.user, "apply_discount"):
+        messages.error(request, "Your account is not allowed to apply discounts.")
+        return redirect("pos")
+
     taxable_amount = subtotal - discount_amount
     tax_amount = taxable_amount * (tax_rate / Decimal("100.00"))
     final_total = taxable_amount + tax_amount
@@ -324,8 +342,49 @@ def pos_checkout(request):
 
 
 @role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
+def sale_list(request):
+    """List sales the account is allowed to see, so a receipt can be reopened later.
+
+    Without this page, a completed sale was only reachable at the moment of
+    checkout or reversal; there was no way to look one up afterwards to reprint
+    it or answer a customer's question about it.
+    """
+    sales = Sale.objects.select_related("customer").order_by("-created_at")
+    if not has_access(request.user, "view_all_sales"):
+        if has_access(request.user, "view_own_sales"):
+            sales = sales.filter(
+                Q(cashier=request.user) | Q(cashier__isnull=True, cashier_name__in=[
+                    request.user.get_full_name(), request.user.username,
+                ])
+            )
+        else:
+            sales = sales.none()
+
+    query = request.GET.get("q", "").strip()
+    if query:
+        sales = sales.filter(
+            Q(receipt_number__icontains=query)
+            | Q(cashier_name__icontains=query)
+            | Q(customer__name__icontains=query)
+        )
+    status = request.GET.get("status", "").strip()
+    if status in (Sale.STATUS_COMPLETED, Sale.STATUS_REVERTED):
+        sales = sales.filter(status=status)
+
+    paginator = Paginator(sales, 50)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    return render(request, "inventory/sale_list.html", {
+        "page_obj": page_obj, "query": query, "selected_status": status,
+        "status_choices": Sale.STATUS_CHOICES,
+    })
+
+
+@role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
 def sale_detail(request, sale_id):
     sale = get_object_or_404(Sale.objects.prefetch_related("items__product"), pk=sale_id)
+    if not can_view_sale(request.user, sale):
+        messages.error(request, "You can only open sales recorded by your own account.")
+        return redirect("pos")
     return render(request, "inventory/sale_detail.html", {"sale": sale})
 
 
@@ -349,17 +408,25 @@ def export_products_csv(request):
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = 'attachment; filename="products.csv"'
     writer = csv.writer(response)
-    writer.writerow(["Name", "Barcode", "Category", "Cost Price", "Selling Price", "Stock", "Reorder Level"])
+    with_cost = has_access(request.user, "view_cost_price")
+    with_stock = has_access(request.user, "view_stock")
+    header = ["Name", "Barcode", "Category"]
+    if with_cost:
+        header.append("Cost Price")
+    header.append("Selling Price")
+    if with_stock:
+        header.append("Stock")
+    header.append("Reorder Level")
+    writer.writerow(header)
     for product in Product.objects.select_related("category").with_stock():
-        writer.writerow([
-            product.name,
-            product.barcode,
-            product.category.name if product.category else "",
-            product.cost_price,
-            product.selling_price,
-            product.stock_on_hand,
-            product.reorder_level,
-        ])
+        row = [product.name, product.barcode, product.category.name if product.category else ""]
+        if with_cost:
+            row.append(product.cost_price)
+        row.append(product.selling_price)
+        if with_stock:
+            row.append(product.stock_on_hand)
+        row.append(product.reorder_level)
+        writer.writerow(row)
     return response
 
 
@@ -496,6 +563,9 @@ def customer_update(request, pk):
 @role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_CASHIER])
 def sale_receipt(request, sale_id):
     sale = get_object_or_404(Sale.objects.prefetch_related("items__product"), pk=sale_id)
+    if not can_view_sale(request.user, sale):
+        messages.error(request, "You can only open receipts for sales recorded by your own account.")
+        return redirect("pos")
     settings = StoreSettings.get_solo()
     subtotal = sum(item.line_total for item in sale.items.all())
     return render(request, "inventory/sale_receipt.html", {

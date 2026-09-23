@@ -29,6 +29,7 @@ urlpatterns = [
     path("pos/remove/<str:barcode>/", views.pos_remove, name="pos_remove"),
     path("pos/clear/", views.pos_clear, name="pos_clear"),
     path("pos/checkout/", views.pos_checkout, name="pos_checkout"),
+    path("sales/", views.sale_list, name="sale_list"),
     path("sales/<int:sale_id>/", views.sale_detail, name="sale_detail"),
     path("sales/<int:sale_id>/receipt/", views.sale_receipt, name="sale_receipt"),
     path("sales/<int:sale_id>/revert/", security_views.sale_revert, name="sale_revert"),

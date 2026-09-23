@@ -2,6 +2,7 @@ import json
 import os
 import sqlite3
 import tempfile
+import time
 import zipfile
 
 from django.conf import settings
@@ -13,14 +14,31 @@ from googleapiclient.http import MediaFileUpload
 from .models import BackupLog, StoreSettings
 
 
-def backup_sqlite(dst_path):
-    """Safely back up the active sqlite database using SQLite's backup API to avoid lock contention."""
-    src_conn = sqlite3.connect(settings.DATABASES["default"]["NAME"])
-    dst_conn = sqlite3.connect(dst_path)
-    with dst_conn:
-        src_conn.backup(dst_conn)
-    dst_conn.close()
-    src_conn.close()
+def backup_sqlite(dst_path, timeout_seconds=60):
+    """Safely back up the active sqlite database using SQLite's backup API to avoid lock contention.
+
+    SQLite's backup retries indefinitely while another connection holds a lock on
+    the source, which would leave a web worker or the backup thread stuck forever.
+    Give up after timeout_seconds so the failure is logged like any other.
+    """
+    deadline = time.monotonic() + timeout_seconds
+
+    def stop_when_late(status, remaining, total):
+        if time.monotonic() > deadline:
+            raise TimeoutError(
+                f"The database stayed locked for more than {timeout_seconds} seconds, so it could not be backed up."
+            )
+
+    src_conn = sqlite3.connect(settings.DATABASES["default"]["NAME"], timeout=timeout_seconds)
+    try:
+        dst_conn = sqlite3.connect(dst_path)
+        try:
+            with dst_conn:
+                src_conn.backup(dst_conn, progress=stop_when_late)
+        finally:
+            dst_conn.close()
+    finally:
+        src_conn.close()
 
 
 def create_backup_zip():

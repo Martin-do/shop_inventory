@@ -75,11 +75,13 @@ ALL_CODENAMES = [code for rows in PERMISSION_SECTIONS.values() for code, _ in ro
 PRESETS = {
     "cashier": {
         "label": "Cashier",
-        "permissions": {"access_pos", "create_sale", "view_own_sales", "view_customers", "create_customers"},
+        # sync_offline_sales is required for checkout itself: the POS submits every
+        # sale through the sync endpoint so it works the same on- and offline.
+        "permissions": {"access_pos", "create_sale", "sync_offline_sales", "view_own_sales", "view_customers", "create_customers"},
     },
     "senior_cashier": {
         "label": "Senior cashier",
-        "permissions": {"access_pos", "create_sale", "apply_discount", "view_own_sales", "view_all_sales", "reverse_sale", "view_customers", "create_customers", "edit_customers"},
+        "permissions": {"access_pos", "create_sale", "sync_offline_sales", "apply_discount", "view_own_sales", "view_all_sales", "reverse_sale", "view_customers", "create_customers", "edit_customers"},
     },
     "inventory_counter": {
         "label": "Inventory counter",
@@ -130,6 +132,7 @@ URL_PERMISSION_MAP = {
     "stocktake_assign_zone": "assign_stocktake_teams", "stocktake_start": "start_stocktakes", "stocktake_count_zone": "count_assigned_zones",
     "stocktake_save_count": "count_assigned_zones", "stocktake_quick_product": "create_products_during_stocktake", "stocktake_complete_zone": "complete_stocktake_zones",
     "stocktake_submit_review": "review_stocktake_counts", "stocktake_review_count": "review_stocktake_counts", "stocktake_apply": "apply_stocktakes",
+    "sale_list": "view_own_sales", "sale_detail": "view_own_sales", "sale_receipt": "view_own_sales", "sale_revert": "reverse_sale",
     "customer_list": "view_customers", "customer_create": "create_customers", "customer_update": "edit_customers",
     "reports": "view_sales_reports", "export_sales_csv": "export_sales", "export_products_csv": "export_products",
     "audit_history": "view_audit_history", "audit_detail": "view_audit_history", "audit_export_csv": "export_audit_history",
@@ -172,6 +175,20 @@ def has_access(user, codename):
         return False
     role = getattr(user, "role", "cashier")
     return codename in LEGACY_ROLE_PERMISSIONS.get(role, set())
+
+
+def can_view_sale(user, sale):
+    """Cashiers see their own receipts; 'view all sales' widens that to everyone's."""
+    if has_access(user, "view_all_sales"):
+        return True
+    if not has_access(user, "view_own_sales"):
+        return False
+    if sale.cashier_id and sale.cashier_id == getattr(user, "pk", None):
+        return True
+    # Older sales recorded only the typed cashier name.
+    if not sale.cashier_id and sale.cashier_name:
+        return sale.cashier_name in {user.get_full_name(), user.username}
+    return False
 
 
 def permission_required(codename):

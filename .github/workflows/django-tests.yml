@@ -12,7 +12,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -30,9 +30,25 @@ jobs:
 
       - name: Check for missing migrations
         run: python manage.py makemigrations --check --dry-run
+        env:
+          DEBUG: "1"
 
       - name: Run Django system checks
         run: python manage.py check
+        env:
+          DEBUG: "1"
+
+      - name: Check production settings load
+        run: python manage.py check
+        env:
+          DEBUG: "0"
+          SECRET_KEY: ci-only-not-a-real-secret-key-0123456789abcdef
+          ALLOWED_HOSTS: example.com
+          CSRF_TRUSTED_ORIGINS: https://example.com
 
       - name: Run tests
-        run: python manage.py test
+        # If a test ever stalls, abort after 5 minutes and print where it is stuck,
+        # rather than sitting silently until the job is cancelled.
+        run: timeout -s ABRT 300 python -X faulthandler manage.py test
+        env:
+          DEBUG: "1"

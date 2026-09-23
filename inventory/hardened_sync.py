@@ -6,6 +6,7 @@ from django.db import transaction
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 
+from .access_control import has_access
 from .audit_signals import log_event
 from .models import AuditLog, Customer, Product, Sale, SaleItem, StockMovement, StoreSettings, UserProfile
 
@@ -103,6 +104,8 @@ def api_sync_offline(request):
                 discount_amount = _money(sale_data.get("discount_amount", 0), "discount amount")
                 if discount_amount < 0 or discount_amount > subtotal:
                     raise ValueError("Discount must be between zero and the sale subtotal.")
+                if discount_amount and not has_access(request.user, "apply_discount"):
+                    raise ValueError("This account is not allowed to apply discounts.")
 
                 settings = StoreSettings.get_solo()
                 tax_rate = settings.default_tax_rate if settings.enable_tax else Decimal("0.00")
