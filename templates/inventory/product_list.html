@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load humanize %}
 {% block title %}Products{% endblock %}
 {% block content %}
 <section class="heading">
@@ -11,26 +12,26 @@
   <button>Search</button>
 </form>
 
-<section class="panel">
+<section class="panel" style="padding: 0; overflow-x: auto;">
   <table>
-    <thead><tr><th>Image</th><th>Name</th><th>Barcode</th><th>Price</th>{% if perms.inventory.view_stock %}<th>Stock</th>{% endif %}<th>Reorder</th><th>Status</th><th>Actions</th></tr></thead>
+    <thead><tr><th style="padding-left: 20px;">Image</th><th>Name</th><th>Barcode</th><th>Price</th>{% if perms.inventory.view_stock %}<th>Stock</th>{% endif %}<th>Reorder</th><th>Status</th><th style="padding-right: 20px;">Actions</th></tr></thead>
     <tbody>
       {% for product in products %}
         <tr class="{% if product.is_low_stock %}low{% endif %}{% if not product.is_active %} inactive{% endif %}">
-          <td>
+          <td style="padding-left: 20px;">
             {% if product.image %}
-              <img src="{{ product.image.url }}" alt="{{ product.name }}" style="width: 35px; height: 35px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line);">
+              <img src="{{ product.image.url }}" alt="{{ product.name }}" style="width: 38px; height: 38px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line);">
             {% else %}
-              <div style="width: 35px; height: 35px; background: #eef2f0; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--muted); font-size: 15px; border: 1px solid var(--line);">📦</div>
+              <div style="width: 38px; height: 38px; background: #f2f0e9; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--muted); font-size: 16px; border: 1px solid var(--line);">📦</div>
             {% endif %}
           </td>
-          <td>{{ product.name }}{% if product.variant %} ({{ product.variant }}){% endif %}</td>
-          <td>{{ product.barcode }}</td>
-          <td>₦{{ product.selling_price|intcomma }}</td>
-          {% if perms.inventory.view_stock %}<td>{{ product.stock_on_hand }}</td>{% endif %}
-          <td>{{ product.reorder_level }}</td>
-          <td>{% if product.is_active %}Active{% else %}Inactive{% endif %}</td>
-          <td class="actions">
+          <td style="font-weight: 500;">{{ product.name }}{% if product.variant %} <span style="color: var(--muted); font-weight: 400;">({{ product.variant }})</span>{% endif %}</td>
+          <td style="color: var(--muted); font-family: var(--font-display); font-size: 12.5px;">{{ product.barcode }}</td>
+          <td style="font-weight: 500;">₦{{ product.selling_price|intcomma }}</td>
+          {% if perms.inventory.view_stock %}<td>{% if product.is_low_stock %}<span class="badge badge-low">{{ product.stock_on_hand }} left</span>{% else %}<span class="badge badge-ok">{{ product.stock_on_hand }} in stock</span>{% endif %}</td>{% endif %}
+          <td style="color: var(--muted);">{{ product.reorder_level }}</td>
+          <td>{% if product.is_active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge badge-off">Inactive</span>{% endif %}</td>
+          <td class="actions" style="padding-right: 20px;">
             <a class="button" href="{% url 'product_update' product.pk %}">Edit</a>
             <form method="post" action="{% url 'product_toggle_active' product.pk %}">
               {% csrf_token %}
@@ -39,7 +40,7 @@
           </td>
         </tr>
       {% empty %}
-        <tr><td colspan="8">No products yet.</td></tr>
+        <tr><td colspan="8" style="padding: 24px 20px; color: var(--muted);">No products yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>

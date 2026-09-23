@@ -2,14 +2,14 @@
 {% block title %}POS{% endblock %}
 {% block page_class %}page-pos{% endblock %}
 {% block content %}
-<div id="network-status-bar" style="padding: 8px 15px; background: #e6f7ff; border: 1px solid #91d5ff; border-radius: 6px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; font-size: 14px;">
+<div id="network-status-bar" style="padding: 12px 18px; background: var(--accent-tint); border: 1px solid #cde4dc; border-radius: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; font-size: 14px;">
   <div>
-    <span id="network-indicator" style="font-weight: bold; color: var(--success);">🟢 Online</span>
+    <span id="network-indicator" style="font-weight: 700; color: var(--success);">🟢 Online</span>
     <span id="sync-status-text" style="margin-left: 10px; color: var(--muted);">Catalog synced.</span>
   </div>
   <div style="display: flex; gap: 10px; align-items: center;">
-    <span id="pending-count-badge" style="display: none; background: #ff4d4f; color: white; padding: 2px 8px; border-radius: 10px; font-weight: bold; font-size: 12px;">0 Pending Sync</span>
-    <button type="button" id="btn-manual-sync" class="button" style="padding: 2px 8px; font-size: 12px; display: none;">🔄 Sync Now</button>
+    <span id="pending-count-badge" style="display: none; background: var(--danger); color: white; padding: 4px 10px; border-radius: 999px; font-weight: 700; font-size: 12px;">0 Pending Sync</span>
+    <button type="button" id="btn-manual-sync" class="button" style="padding: 6px 12px; font-size: 12.5px; display: none;">🔄 Sync Now</button>
   </div>
 </div>
 
@@ -25,52 +25,52 @@
       <div style="position: relative; width: 100%;">
         <input id="barcode-input" name="barcode" placeholder="Scan barcode or type product name..." required autofocus autocomplete="off">
         <!-- Floating Suggestions Dropdown -->
-        <div id="search-suggestions" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; max-height: 250px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow-lg); z-index: 100; margin-top: 4px;">
+        <div id="search-suggestions" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; max-height: 280px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: var(--shadow-lg); z-index: 100; margin-top: 6px;">
         </div>
       </div>
-      <input name="quantity" id="pos-quantity-input" type="number" min="1" value="1" aria-label="Quantity" style="max-width: 90px;">
+      <input name="quantity" id="pos-quantity-input" type="number" min="1" value="1" aria-label="Quantity" style="max-width: 110px;">
       <button class="button primary" type="submit">Add</button>
     </form>
 
-    <section class="panel">
+    <section class="panel" style="padding: 0; overflow: hidden;">
       <table class="cart">
-        <thead><tr><th>Image</th><th>Item</th><th style="text-align: center;">Qty</th><th>Total</th><th></th></tr></thead>
+        <thead><tr><th style="padding: 14px 16px 14px 20px;">Image</th><th>Item</th><th style="text-align: center;">Qty</th><th>Total</th><th style="padding-right: 20px;"></th></tr></thead>
         <tbody id="cart-table-body">
-          <tr><td colspan="5">Scan an item to begin.</td></tr>
+          <tr><td colspan="5" style="padding: 24px 20px; color: var(--muted);">Scan an item to begin.</td></tr>
         </tbody>
       </table>
     </section>
   </div>
 
-  <aside class="checkout panel" style="padding: 16px;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-      <h3 style="margin: 0; font-size: 20px;">Summary</h3>
-      <button type="button" id="mute-toggle" class="button" style="padding: 3px 8px; font-size: 12px; min-height: auto;">🔊 Mute</button>
+  <aside class="checkout panel" style="padding: 22px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+      <h3 style="font-size: 17px; font-weight: 600;">Summary</h3>
+      <button type="button" id="mute-toggle" class="button" style="padding: 5px 10px; font-size: 12px; min-height: auto;">🔊 Mute</button>
     </div>
 
-    <div class="summary-breakdown" style="margin: 8px 0; border-top: 1px solid var(--line); padding-top: 10px; font-size: 15px;">
-      <div style="display:flex; justify-content:space-between; margin-bottom:6px; align-items: center;">
-        <span>Subtotal:</span>
-        <strong id="summary-subtotal" style="font-size: 16px; font-weight: bold; margin: 0; display: inline; font-family: monospace;">₦0.00</strong>
+    <div class="summary-breakdown" style="margin: 8px 0; border-top: 1px solid var(--line); padding-top: 12px; font-size: 14px;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:8px; align-items: center;">
+        <span style="color: var(--muted);">Subtotal:</span>
+        <strong id="summary-subtotal" style="font-size: 15px; font-weight: 600; margin: 0; display: inline; font-family: var(--font-display);">₦0.00</strong>
       </div>
-      <div style="display:flex; justify-content:space-between; margin-bottom:6px; color: var(--danger); align-items: center;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:8px; color: var(--danger); align-items: center;">
         <span>Discount:</span>
-        <strong id="summary-discount" style="font-size: 16px; font-weight: bold; margin: 0; display: inline; font-family: monospace;">-₦0.00</strong>
+        <strong id="summary-discount" style="font-size: 15px; font-weight: 600; margin: 0; display: inline; font-family: var(--font-display);">-₦0.00</strong>
       </div>
-      <div style="display:flex; justify-content:space-between; margin-bottom:6px; color: var(--accent); align-items: center;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:8px; color: var(--accent); align-items: center;">
         <span>Tax:</span>
-        <strong id="summary-tax" style="font-size: 16px; font-weight: bold; margin: 0; display: inline; font-family: monospace;">₦0.00</strong>
+        <strong id="summary-tax" style="font-size: 15px; font-weight: 600; margin: 0; display: inline; font-family: var(--font-display);">₦0.00</strong>
       </div>
-      <div style="display:flex; justify-content:space-between; border-top: 2px solid var(--ink); padding-top: 8px; font-size: 20px; align-items: center; margin-top: 6px;">
-        <span style="font-weight: bold;">Total:</span>
-        <strong id="summary-total" style="font-size: 26px; font-weight: 800; margin: 0; display: inline; color: var(--accent); font-family: monospace;">₦0.00</strong>
+      <div style="display:flex; justify-content:space-between; border-top: 1px solid var(--line); padding-top: 12px; align-items: baseline; margin-top: 8px;">
+        <span style="font-size: 15px; font-weight: 600;">Total:</span>
+        <strong id="summary-total" style="margin: 0; display: inline; color: var(--ink);">₦0.00</strong>
       </div>
     </div>
 
-    <form id="checkout-form" style="gap: 10px;" onsubmit="event.preventDefault(); openCheckoutConfirmModal();">
+    <form id="checkout-form" style="gap: 14px;" onsubmit="event.preventDefault(); openCheckoutConfirmModal();">
       {% csrf_token %}
-      <label style="font-size: 15px; font-weight: bold; gap: 4px;">Customer
-        <select name="customer" id="id_customer" style="font-size: 15px; padding: 8px; min-height: 40px;">
+      <label style="font-size: 13.5px;">Customer
+        <select name="customer" id="id_customer">
           <option value="">— Guest Customer —</option>
           {% for customer in customers %}
             <option value="{{ customer.id }}">{{ customer.name }}{% if customer.phone %} ({{ customer.phone }}){% endif %}</option>
@@ -78,45 +78,45 @@
         </select>
       </label>
 
-      <label style="display: flex; align-items: center; gap: 8px; margin: 6px 0 2px 0; cursor: pointer; font-weight: bold; font-size: 15px; user-select: none;">
-        <input type="checkbox" id="toggle-discount" style="width: auto; margin: 0; transform: scale(1.2);"> Apply Discount
+      <label style="display: flex; flex-direction: row; align-items: center; gap: 8px; margin: 2px 0; cursor: pointer; font-weight: 600; font-size: 13.5px; user-select: none;">
+        <input type="checkbox" id="toggle-discount" style="width: auto; margin: 0; min-height: auto; transform: scale(1.2);"> Apply Discount
       </label>
 
-      <div id="discount-wrapper" style="display: none; margin-bottom: 6px;">
-        <label style="font-size: 14px; font-weight: bold; color: var(--danger); gap: 4px;">Discount Amount (Flat)
-          <input name="discount_amount" id="id_discount_amount" type="number" step="0.01" min="0" value="0.00" style="font-size: 16px; padding: 6px; min-height: 38px;">
+      <div id="discount-wrapper" style="display: none; margin-top: -6px;">
+        <label style="font-size: 13px; color: var(--danger);">Discount Amount (Flat)
+          <input name="discount_amount" id="id_discount_amount" type="number" step="0.01" min="0" value="0.00">
         </label>
       </div>
 
       <input type="hidden" name="tax_rate" id="id_tax_rate" value="{{ default_tax_rate }}">
       <input type="hidden" name="cashier_name" id="id_cashier_name" value="{{ user.get_full_name|default:user.username }}">
 
-      <label style="font-size: 15px; font-weight: bold; gap: 4px;">Amount Paid
-        <input name="amount_paid" id="id_amount_paid" type="text" inputmode="decimal" value="0.00" style="font-size: 20px; padding: 10px; font-weight: bold; text-align: right; min-height: 44px;">
+      <label style="font-size: 13.5px;">Amount Paid
+        <input name="amount_paid" id="id_amount_paid" type="text" inputmode="decimal" value="0.00" style="font-size: 24px; font-weight: 700; font-family: var(--font-display); text-align: right; min-height: 56px; border-color: var(--line-strong);">
       </label>
 
-      <div style="display:flex; justify-content:space-between; align-items: center; margin-top:8px; font-size: 18px; font-weight: bold; border-top: 1px dashed var(--line); padding-top: 10px; color: var(--success);">
+      <div style="display:flex; justify-content:space-between; align-items: baseline; margin-top: 2px; font-size: 13.5px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 12px;">
         <span>Change Due:</span>
-        <span id="summary-change-due" style="font-size: 24px; font-family: monospace;">₦0.00</span>
+        <span id="summary-change-due" style="font-weight: 700; color: var(--ink); font-family: var(--font-display);">₦0.00</span>
       </div>
 
-      <button class="button primary wide" style="margin-top: 8px; font-size: 17px; padding: 12px; min-height: 46px;" type="submit">Complete Sale</button>
+      <button class="button primary wide" type="submit">Complete Sale</button>
     </form>
   </aside>
 </section>
 
 <!-- Checkout Confirmation Modal -->
-<div id="checkout-confirm-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center;">
-  <div style="background: var(--panel); padding: 25px; border-radius: 12px; max-width: 480px; width: 90%; box-shadow: var(--shadow-lg); border: 1px solid var(--line);">
-    <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 20px;">Confirm Transaction</h3>
-    
-    <div style="max-height: 150px; overflow-y: auto; margin-bottom: 15px; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fafafa;">
+<div id="checkout-confirm-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(20,30,25,0.5); z-index: 1000; justify-content: center; align-items: center;">
+  <div style="background: var(--panel); padding: 28px; border-radius: var(--radius-lg); max-width: 480px; width: 90%; box-shadow: var(--shadow-lg); border: 1px solid var(--line);">
+    <h3 style="margin-bottom: 16px; font-size: 19px;">Confirm Transaction</h3>
+
+    <div style="max-height: 150px; overflow-y: auto; margin-bottom: 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--bg);">
       <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: var(--ink);">
         <thead>
-          <tr style="border-bottom: 1px solid var(--line); text-align: left; font-weight: bold;">
-            <th style="padding-bottom: 5px;">Item</th>
-            <th style="text-align: right; padding-bottom: 5px; width: 60px;">Qty</th>
-            <th style="text-align: right; padding-bottom: 5px; width: 90px;">Total</th>
+          <tr style="border-bottom: 1px solid var(--line); text-align: left; font-weight: 600;">
+            <th style="padding-bottom: 6px;">Item</th>
+            <th style="text-align: right; padding-bottom: 6px; width: 60px;">Qty</th>
+            <th style="text-align: right; padding-bottom: 6px; width: 90px;">Total</th>
           </tr>
         </thead>
         <tbody id="modal-cart-lines">
@@ -124,7 +124,7 @@
       </table>
     </div>
 
-    <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; font-size: 15px; border-bottom: 1px solid var(--line); padding-bottom: 15px;">
+    <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; font-size: 14px; border-bottom: 1px solid var(--line); padding-bottom: 16px;">
       <div style="display: flex; justify-content: space-between;">
         <span style="color: var(--muted);">Cashier:</span>
         <strong id="modal-cashier-name">{{ user.get_full_name|default:user.username }}</strong>
@@ -145,22 +145,22 @@
         <span>Tax:</span>
         <strong id="modal-tax">₦0.00</strong>
       </div>
-      <div style="display: flex; justify-content: space-between; font-size: 22px; margin-top: 5px; border-top: 2px solid var(--ink); padding-top: 10px;">
-        <strong>Total Amount:</strong>
-        <strong id="modal-total" style="color: var(--primary);">₦0.00</strong>
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px; border-top: 1px solid var(--line); padding-top: 12px;">
+        <strong style="font-size: 14px;">Total Amount:</strong>
+        <strong id="modal-total" style="color: var(--ink); font-family: var(--font-display); font-size: 24px;">₦0.00</strong>
       </div>
-      <div style="display: flex; justify-content: space-between; margin-top: 5px; border-top: 1px dashed var(--line); padding-top: 8px;">
+      <div style="display: flex; justify-content: space-between; margin-top: 4px; border-top: 1px dashed var(--line); padding-top: 10px;">
         <span>Amount Paid:</span>
         <strong id="modal-paid">₦0.00</strong>
       </div>
-      <div style="display: flex; justify-content: space-between; font-weight: bold; color: var(--success);">
+      <div style="display: flex; justify-content: space-between; font-weight: 700; color: var(--success);">
         <span>Change Due:</span>
         <strong id="modal-change">₦0.00</strong>
       </div>
     </div>
 
     <div style="display: flex; gap: 12px;">
-      <button type="button" id="btn-modal-confirm" class="button primary wide">Confirm & Submit</button>
+      <button type="button" id="btn-modal-confirm" class="button primary wide">Confirm &amp; Submit</button>
       <button type="button" id="btn-modal-cancel" class="button wide">Cancel</button>
     </div>
   </div>
@@ -324,7 +324,7 @@
   function renderCart() {
     cartBody.innerHTML = "";
     if (localCart.length === 0) {
-      cartBody.innerHTML = '<tr><td colspan="5">Scan an item to begin.</td></tr>';
+      cartBody.innerHTML = '<tr><td colspan="5" style="padding: 24px 20px; color: var(--muted);">Scan an item to begin.</td></tr>';
       userManuallySetAmountPaid = false;
       updateCheckoutSummary();
       return;
@@ -339,23 +339,23 @@
       tr.style.fontSize = "15px";
 
       tr.innerHTML = `
-        <td style="width: 60px; vertical-align: middle;">
-          ${item.image_url ? `<img src="${esc(item.image_url)}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line);">` : `<div style="width: 50px; height: 50px; background: #eef2f0; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted); font-size: 22px; border: 1px solid var(--line);">📦</div>`}
+        <td style="width: 68px; vertical-align: middle; padding-left: 20px;">
+          ${item.image_url ? `<img src="${esc(item.image_url)}" style="width: 52px; height: 52px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line);">` : `<div style="width: 52px; height: 52px; background: #f2f0e9; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--muted); font-size: 22px; border: 1px solid var(--line);">📦</div>`}
         </td>
         <td style="vertical-align: middle;">
-          <span style="font-size: 16px; font-weight: bold; color: var(--ink);">${esc(item.name)}</span>
-          ${item.variant ? `<br><span style="font-size: 13px; font-weight: bold; color: var(--accent); background: #e8f3f1; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px;">${esc(item.variant)}</span>` : ''}
-          <br><small style="margin-top: 4px; font-size: 11px;">${esc(item.barcode)}</small>
+          <span style="font-size: 16px; font-weight: 600; color: var(--ink);">${esc(item.name)}</span>
+          ${item.variant ? `<br><span style="font-size: 12.5px; font-weight: 600; color: var(--accent); background: var(--accent-tint); padding: 2px 7px; border-radius: 5px; display: inline-block; margin-top: 4px;">${esc(item.variant)}</span>` : ''}
+          <br><small style="margin-top: 4px; font-size: 11.5px;">${esc(item.barcode)}</small>
         </td>
-        <td style="font-size: 18px; font-weight: bold; vertical-align: middle; text-align: center;">
-          <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
-            <button type="button" class="button" style="padding: 2px 8px; font-size: 14px;" onclick="updateCartQty(${index}, -1)">-</button>
-            <span>${item.quantity}</span>
-            <button type="button" class="button" style="padding: 2px 8px; font-size: 14px;" onclick="updateCartQty(${index}, 1)">+</button>
+        <td style="font-family: var(--font-display); font-size: 18px; font-weight: 700; vertical-align: middle; text-align: center;">
+          <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <button type="button" class="button" style="width: 36px; height: 36px; padding: 0; font-size: 16px; border-radius: 9px;" onclick="updateCartQty(${index}, -1)" aria-label="Decrease quantity">-</button>
+            <span style="min-width: 22px; display: inline-block; text-align: center;">${item.quantity}</span>
+            <button type="button" class="button" style="width: 36px; height: 36px; padding: 0; font-size: 16px; border-radius: 9px;" onclick="updateCartQty(${index}, 1)" aria-label="Increase quantity">+</button>
           </div>
         </td>
-        <td style="font-size: 18px; font-weight: bold; color: var(--ink); vertical-align: middle;">₦${lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-        <td style="vertical-align: middle;">
+        <td style="font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--ink); vertical-align: middle;">₦${lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td style="vertical-align: middle; padding-right: 20px;">
           <button type="button" class="link-button" onclick="removeFromCart(${index})">Remove</button>
         </td>
       `;
@@ -733,7 +733,7 @@
 
     results.forEach(product => {
       const row = document.createElement("div");
-      row.style.padding = "10px 14px";
+      row.style.padding = "12px 16px";
       row.style.borderBottom = "1px solid var(--line)";
       row.style.cursor = "pointer";
       row.style.display = "flex";
@@ -741,15 +741,15 @@
       row.style.alignItems = "center";
       row.style.fontSize = "15px";
 
-      row.addEventListener("mouseover", () => row.style.background = "#e8f3f1");
+      row.addEventListener("mouseover", () => row.style.background = "var(--accent-tint)");
       row.addEventListener("mouseout", () => row.style.background = "none");
 
       row.innerHTML = `
         <div>
-          <span style="font-weight:bold;">${esc(product.name)}</span> ${product.variant ? `<span style="font-size:12px; font-weight:bold; color:var(--accent); background:#e8f3f1; padding:2px 6px; border-radius:4px;">${esc(product.variant)}</span>` : ''}
+          <span style="font-weight:600;">${esc(product.name)}</span> ${product.variant ? `<span style="font-size:12px; font-weight:600; color:var(--accent); background:var(--accent-tint); padding:2px 7px; border-radius:5px;">${esc(product.variant)}</span>` : ''}
           <br><small style="color:var(--muted); font-size:12px;">Barcode: ${esc(product.barcode)} | Price: ₦${parseFloat(product.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Stock: ${product.stock}</small>
         </div>
-        <button type="button" class="button primary" style="padding: 4px 10px; font-size: 12px;">Select</button>
+        <button type="button" class="button primary" style="padding: 6px 12px; font-size: 12.5px; min-height: auto;">Select</button>
       `;
 
       row.addEventListener("click", () => {

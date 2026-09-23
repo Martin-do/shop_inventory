@@ -2,7 +2,25 @@
 {% block title %}Count {{ zone.name }}{% endblock %}
 {% block content %}
 <style>
-.scan-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(300px,.9fr);gap:18px}.camera-wrap{position:relative;background:#111;border-radius:12px;overflow:hidden;min-height:260px}.camera-wrap video{width:100%;height:100%;min-height:260px;object-fit:cover}.scan-line{position:absolute;left:10%;right:10%;top:50%;border-top:3px solid #35d07f;box-shadow:0 0 12px #35d07f}.qty-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.recent-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}.lookup-row{display:grid;grid-template-columns:1fr auto;gap:8px}.product-banner{background:#eef7f4;border:1px solid #cde4dc;border-radius:10px;padding:12px;margin:10px 0}.new-product-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.unknown-card{border:2px solid #e0aa52}.unknown-card[hidden]{display:none}.form-note{color:var(--muted);font-size:13px;margin:4px 0 12px}.details-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.scan-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(300px,.9fr);gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);padding:20px}
+.muted{color:var(--muted);font-size:13px}
+.camera-wrap{position:relative;background:#12201b;border-radius:var(--radius-lg);overflow:hidden;min-height:260px}
+.camera-wrap video{width:100%;height:100%;min-height:260px;object-fit:cover}
+.scan-line{position:absolute;left:10%;right:10%;top:50%;border-top:2.5px solid #35d07f;box-shadow:0 0 14px #35d07f}
+.qty-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.qty-grid input{height:54px;font-size:22px;font-weight:700;font-family:var(--font-display);text-align:center;border-color:var(--line-strong)}
+.recent-row{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.recent-row:first-child{border-top:0}
+.recent-row strong:last-child{font-family:var(--font-display);font-size:18px}
+.lookup-row{display:grid;grid-template-columns:1fr auto;gap:8px}
+.lookup-row input{height:50px;font-size:17px;font-weight:600;font-family:var(--font-display)}
+.product-banner{background:var(--accent-tint);border:1px solid #cde4dc;border-radius:var(--radius-md);padding:14px 16px;margin:10px 0;font-weight:600}
+.new-product-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.unknown-card{border:1.5px solid var(--amber-line);background:var(--amber-tint)}
+.unknown-card[hidden]{display:none}
+.form-note{color:var(--muted);font-size:13px;margin:4px 0 12px}
+.details-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
 @media(max-width:780px){.scan-grid{grid-template-columns:1fr}.camera-wrap,.camera-wrap video{min-height:220px}.qty-grid,.details-grid{grid-template-columns:1fr 1fr}.page{padding:12px}.lookup-row{grid-template-columns:1fr}.lookup-row .button{width:100%}}
 </style>
 <a href="{% url 'stocktake_detail' session.id %}">← {{ session.name }}</a>
@@ -15,14 +33,14 @@
 <p id="camera-help" class="muted">Live camera scanning requires HTTPS. Manual entry and Bluetooth/USB scanners work over the local IP address.</p>
 <div class="card">
 <form id="count-form">{% csrf_token %}
-<h3 style="margin-top:0">Manual barcode entry</h3>
+<h3 style="margin-top:0;font-size:15px">Manual barcode entry</h3>
 <label for="barcode">Barcode or product search</label>
 <div class="lookup-row"><input id="barcode" name="barcode" inputmode="numeric" autocomplete="off" required autofocus><button class="button" type="button" id="lookup">Find product</button></div>
 <div class="new-product-actions"><button class="button" type="button" id="open-product-form">+ Add a new product</button></div>
 <div id="product-result"></div>
 <div class="qty-grid"><div><label>Good / sellable</label><input id="good-quantity" type="number" min="0" name="good_quantity" value="0"></div><div><label>Damaged</label><input type="number" min="0" name="damaged_quantity" value="0"></div><div><label>Expired</label><input type="number" min="0" name="expired_quantity" value="0"></div><div><label>Reserved</label><input type="number" min="0" name="reserved_quantity" value="0"></div></div>
 <label>Note</label><input name="note" placeholder="Optional observation">
-<button class="button primary" id="save-count" style="width:100%;margin-top:12px">Save count</button>
+<button class="button primary" id="save-count" style="width:100%;margin-top:12px;min-height:50px;font-size:15px">Save count</button>
 </form>
 </div>
 </section>
@@ -38,8 +56,8 @@
 <button class="button primary" style="width:100%;margin-top:10px">Create product and continue counting</button>
 </form>
 </div>
-<div class="card"><h3>Recently counted</h3><div id="recent-list">{% for row in recent %}<div class="recent-row"><span><strong>{{ row.product.name }}</strong><br><small>{{ row.product.barcode }} · {{ row.counted_by.username }}</small></span><strong>{{ row.good_quantity }}</strong></div>{% empty %}<p class="muted">No items counted yet.</p>{% endfor %}</div></div>
-<form method="post" action="{% url 'stocktake_complete_zone' zone.id %}" style="margin-top:12px">{% csrf_token %}<button class="button" style="width:100%">Finish this zone</button></form>
+<div class="card"><h3 style="font-size:15px">Recently counted</h3><div id="recent-list">{% for row in recent %}<div class="recent-row"><span><strong>{{ row.product.name }}</strong><br><small>{{ row.product.barcode }} · {{ row.counted_by.username }}</small></span><strong>{{ row.good_quantity }}</strong></div>{% empty %}<p class="muted">No items counted yet.</p>{% endfor %}</div></div>
+<form method="post" action="{% url 'stocktake_complete_zone' zone.id %}" style="margin-top:12px">{% csrf_token %}<button class="button" style="width:100%;min-height:48px">Finish this zone</button></form>
 </aside></div>
 <script>
 (() => {

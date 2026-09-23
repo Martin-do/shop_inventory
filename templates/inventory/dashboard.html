@@ -1,34 +1,38 @@
 {% extends "base.html" %}
+{% load humanize %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 <section class="heading">
-  <h1>Dashboard</h1>
+  <div>
+    <h1>Dashboard</h1>
+    <p style="margin: 4px 0 0; font-size: 13px; color: var(--muted);">{% now "l, N j" %}</p>
+  </div>
   <a class="button primary" href="{% url 'pos' %}">Open POS</a>
 </section>
 
 <section class="stats">
   <article><span>{{ product_count }}</span><p>Products</p></article>
-  <article><span>{{ low_stock_count }}</span><p>Low stock</p></article>
+  <article style="{% if low_stock_count %}background: var(--amber-tint); border-color: var(--amber-line);{% endif %}"><span style="{% if low_stock_count %}color: var(--amber);{% endif %}">{{ low_stock_count }}</span><p>Low stock</p></article>
   <article><span>{{ sale_count }}</span><p>Sales</p></article>
   {% if perms.inventory.view_stock_valuation %}<article><span>₦{{ stock_value|intcomma }}</span><p>Stock value</p></article>{% endif %}
 </section>
 
 {% if perms.inventory.view_stock_movements %}
-<section class="panel">
-  <h2>Recent Stock Movements</h2>
+<section class="panel" style="padding: 0; overflow: hidden;">
+  <h2 style="font-size: 15px; padding: 18px 20px 4px;">Recent Stock Movements</h2>
   <table>
-    <thead><tr><th>Time</th><th>Product</th><th>Type</th><th>Qty</th><th>Note</th></tr></thead>
+    <thead><tr><th style="padding-left: 20px;">Time</th><th>Product</th><th>Type</th><th>Qty</th><th style="padding-right: 20px;">Note</th></tr></thead>
     <tbody>
       {% for movement in recent_movements %}
         <tr>
-          <td>{{ movement.created_at|date:"M j, H:i" }}</td>
-          <td>{{ movement.product.name }}</td>
+          <td style="padding-left: 20px; color: var(--muted);">{{ movement.created_at|date:"M j, H:i" }}</td>
+          <td style="font-weight: 500;">{{ movement.product.name }}</td>
           <td>{{ movement.get_movement_type_display }}</td>
-          <td>{{ movement.quantity }}</td>
-          <td>{{ movement.note }}</td>
+          <td style="font-family: var(--font-display); font-weight: 600;{% if movement.quantity < 0 %} color: var(--danger);{% else %} color: var(--accent);{% endif %}">{{ movement.quantity|stringformat:"+d" }}</td>
+          <td style="padding-right: 20px; color: var(--muted);">{{ movement.note }}</td>
         </tr>
       {% empty %}
-        <tr><td colspan="5">No stock movements yet.</td></tr>
+        <tr><td colspan="5" style="padding: 24px 20px; color: var(--muted);">No stock movements yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
