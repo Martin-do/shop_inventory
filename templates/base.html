@@ -6,10 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Shop Inventory{% endblock %}</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="{% static 'inventory/styles.css' %}?v=20260923-1">
+  <link rel="stylesheet" href="{% static 'inventory/styles.css' %}?v=20260924-1">
   {% block extra_head %}{% endblock %}
 </head>
-<body class="app-shell{% if not user.is_authenticated %} app-shell-bare{% endif %}">
+<body class="app-shell{% if not user.is_authenticated %} app-shell-bare{% endif %}{% block body_class %}{% endblock %}">
+  <script>
+    // Applied before paint so a returning visitor's collapsed sidebar never flashes open.
+    try { if (localStorage.getItem("sidebar_collapsed") === "1") document.body.classList.add("sidebar-collapsed"); } catch (e) {}
+  </script>
   {% if user.is_authenticated %}
     {% include "inventory/_sidebar.html" %}
   {% else %}
@@ -60,6 +64,17 @@
       const open = () => { sidebar.classList.add("is-open"); scrim.classList.add("is-open"); toggle.setAttribute("aria-expanded", "true"); };
       toggle.addEventListener("click", () => sidebar.classList.contains("is-open") ? close() : open());
       scrim.addEventListener("click", close);
+    })();
+
+    // Desktop sidebar collapse (icon rail), remembered per browser.
+    (() => {
+      const collapseToggle = document.getElementById("sidebar-collapse-toggle");
+      if (!collapseToggle) return;
+      collapseToggle.addEventListener("click", () => {
+        const collapsed = document.body.classList.toggle("sidebar-collapsed");
+        try { localStorage.setItem("sidebar_collapsed", collapsed ? "1" : "0"); } catch (e) {}
+        collapseToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      });
     })();
   </script>
   <script src="{% static 'inventory/app_hardening.js' %}?v=20260805-2"></script>

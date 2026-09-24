@@ -1,18 +1,42 @@
 {% extends "base.html" %}
 {% block title %}Log in{% endblock %}
+{% block page_class %}page-login{% endblock %}
+{% block body_class %} login-mode{% endblock %}
 {% block content %}
-<section class="heading">
-  <h1>Log in</h1>
-</section>
+<div class="login-screen">
+  <div class="login-dots" aria-hidden="true"></div>
+  <div class="login-glow" aria-hidden="true"></div>
 
-<form class="form panel" method="post">
-  {% csrf_token %}
-  {{ form.non_field_errors }}
-  {% for field in form %}
-    <label>{{ field.label }} {{ field }}</label>
-    {{ field.errors }}
-  {% endfor %}
-  <input type="hidden" name="next" value="{{ next }}">
-  <button class="button primary">Log in</button>
-</form>
+  <div class="login-stack">
+    <div class="login-brand">
+      <span class="login-brand-mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F4FBF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1-5h16l1 5"></path><path d="M4 9h16v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9z"></path><path d="M9 13a3 3 0 0 0 6 0"></path></svg>
+      </span>
+      <div>
+        <div class="login-brand-name">Shop Inventory</div>
+        <div class="login-brand-tag">POS &amp; stock management</div>
+      </div>
+    </div>
+
+    <div class="login-card">
+      <h1>Welcome back</h1>
+      <p class="login-sub">Log in with your staff account to continue.</p>
+
+      <form method="post">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+        {% for field in form %}
+          <label>{{ field.label }}{{ field }}</label>
+          {{ field.errors }}
+        {% endfor %}
+        <input type="hidden" name="next" value="{{ next }}">
+        <button class="button primary wide" type="submit">Log in</button>
+      </form>
+
+      <p class="login-help">Trouble signing in? Ask your shop manager<br>to reset your password.</p>
+    </div>
+
+    <p class="login-footnote">Secured access · Staff accounts only</p>
+  </div>
+</div>
 {% endblock %}

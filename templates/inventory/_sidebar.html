@@ -7,8 +7,12 @@ base.html: this partial adds no new access logic, only the layout around it.
     <span class="sidebar-brand-mark" aria-hidden="true">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F4FBF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1-5h16l1 5"></path><path d="M4 9h16v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9z"></path><path d="M9 13a3 3 0 0 0 6 0"></path></svg>
     </span>
-    Shop Inventory
+    <span class="sidebar-brand-text">Shop Inventory</span>
   </a>
+
+  <button type="button" class="sidebar-collapse-toggle" id="sidebar-collapse-toggle" aria-label="Collapse sidebar" aria-expanded="true">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"></polyline></svg>
+  </button>
 
   <nav class="sidebar-nav">
 
@@ -17,7 +21,7 @@ base.html: this partial adds no new access logic, only the layout around it.
       <div class="sidebar-group-label">Sell</div>
       <a href="{% url 'pos' %}" class="sidebar-link{% if request.resolver_match.url_name == 'pos' %} is-active{% endif %}">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="13" rx="2"></rect><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"></path><path d="M2 12h20"></path></svg>
-        POS
+        <span class="sidebar-link-text">POS</span>
       </a>
     </div>
     {% endif %}
@@ -28,19 +32,19 @@ base.html: this partial adds no new access logic, only the layout around it.
       {% if perms.inventory.view_products %}
       <a href="{% url 'product_list' %}" class="sidebar-link{% if request.resolver_match.url_name == 'product_list' %} is-active{% endif %}">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-        Products
+        <span class="sidebar-link-text">Products</span>
       </a>
       {% endif %}
       {% if perms.inventory.receive_stock %}
       <a href="{% url 'receive_stock' %}" class="sidebar-link{% if request.resolver_match.url_name == 'receive_stock' %} is-active{% endif %}">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15V6"></path><path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"></path><path d="M8.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"></path><path d="M8.5 16V4"></path></svg>
-        Receive stock
+        <span class="sidebar-link-text">Receive stock</span>
       </a>
       {% endif %}
       {% if perms.inventory.view_assigned_stocktakes %}
       <a href="{% url 'stocktake_list' %}" class="sidebar-link{% if request.resolver_match.url_name == 'stocktake_list' or request.resolver_match.url_name == 'stocktake_detail' %} is-active{% endif %}">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
-        Stocktake
+        <span class="sidebar-link-text">Stocktake</span>
       </a>
       {% endif %}
     </div>
@@ -52,25 +56,25 @@ base.html: this partial adds no new access logic, only the layout around it.
       {% if perms.inventory.view_sales_reports %}
       <a href="{% url 'dashboard' %}" class="sidebar-link{% if request.resolver_match.url_name == 'dashboard' %} is-active{% endif %}">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
-        Dashboard
+        <span class="sidebar-link-text">Dashboard</span>
       </a>
       {% endif %}
       {% if perms.inventory.view_own_sales or perms.inventory.view_all_sales %}
       <a href="{% url 'sale_list' %}" class="sidebar-link{% if request.resolver_match.url_name == 'sale_list' %} is-active{% endif %}">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-        Sales
+        <span class="sidebar-link-text">Sales</span>
       </a>
       {% endif %}
       {% if perms.inventory.view_sales_reports %}
       <a href="{% url 'reports' %}" class="sidebar-link{% if request.resolver_match.url_name == 'reports' %} is-active{% endif %}">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="M7 15l4-6 4 3 5-8"></path></svg>
-        Reports
+        <span class="sidebar-link-text">Reports</span>
       </a>
       {% endif %}
       {% if perms.inventory.view_audit_history %}
       <a href="{% url 'audit_history' %}" class="sidebar-link{% if request.resolver_match.url_name == 'audit_history' %} is-active{% endif %}">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15.5 14"></polyline></svg>
-        History
+        <span class="sidebar-link-text">History</span>
       </a>
       {% endif %}
     </div>
@@ -82,19 +86,19 @@ base.html: this partial adds no new access logic, only the layout around it.
       {% if perms.inventory.view_customers %}
       <a href="{% url 'customer_list' %}" class="sidebar-link{% if request.resolver_match.url_name == 'customer_list' %} is-active{% endif %}">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-        Customers
+        <span class="sidebar-link-text">Customers</span>
       </a>
       {% endif %}
       {% if perms.inventory.view_staff %}
       <a href="{% url 'settings_staff_list' %}" class="sidebar-link{% if request.resolver_match.url_name == 'settings_staff_list' or request.resolver_match.url_name == 'settings_staff_create' or request.resolver_match.url_name == 'settings_staff_update' %} is-active{% endif %}">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle><path d="M22 11l-2 2-1-1"></path></svg>
-        Staff &amp; access
+        <span class="sidebar-link-text">Staff &amp; access</span>
       </a>
       {% endif %}
       {% if perms.inventory.manage_store_settings or perms.inventory.manage_categories %}
       <a href="{% url 'settings_dashboard' %}" class="sidebar-link{% if request.resolver_match.url_name == 'settings_dashboard' %} is-active{% endif %}">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-        Settings
+        <span class="sidebar-link-text">Settings</span>
       </a>
       {% endif %}
     </div>

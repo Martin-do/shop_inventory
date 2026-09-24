@@ -83,6 +83,63 @@ h1, h2, h3 {
   padding: 22px 16px 18px;
   position: sticky;
   top: 0;
+  transition: width .18s ease;
+}
+
+.sidebar-collapse-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-end;
+  width: 26px;
+  height: 26px;
+  margin: -6px 6px 12px 0;
+  border-radius: 7px;
+  border: 0;
+  background: none;
+  color: #8fb0a4;
+  min-height: auto;
+  padding: 0;
+  transition: background-color .15s ease, color .15s ease, transform .18s ease;
+}
+
+.sidebar-collapse-toggle:hover {
+  background: rgba(231, 241, 236, .08);
+  color: #f4fbf8;
+}
+
+/* Collapsed: a narrow icon rail. Labels fade and shrink rather than jump. */
+body.sidebar-collapsed .sidebar {
+  width: 76px;
+}
+
+body.sidebar-collapsed .sidebar-collapse-toggle {
+  transform: rotate(180deg);
+  align-self: center;
+  margin-right: 0;
+}
+
+body.sidebar-collapsed .sidebar-brand {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+body.sidebar-collapsed .sidebar-link {
+  justify-content: center;
+}
+
+body.sidebar-collapsed .sidebar-link-text,
+body.sidebar-collapsed .sidebar-brand-text,
+body.sidebar-collapsed .sidebar-group-label,
+body.sidebar-collapsed .sidebar-user-info {
+  display: none;
+}
+
+body.sidebar-collapsed .sidebar-user {
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
 }
 
 .sidebar-brand {
@@ -138,6 +195,7 @@ h1, h2, h3 {
   font-size: 14px;
   font-weight: 500;
   color: #c4d8cf;
+  transition: background-color .15s ease, color .15s ease;
 }
 
 .sidebar-link:hover {
@@ -266,6 +324,7 @@ h1, h2, h3 {
 .page {
   max-width: 1180px;
   padding: 26px 32px;
+  animation: pageFadeIn .25s ease;
 }
 
 .page.page-wide {
@@ -276,6 +335,170 @@ h1, h2, h3 {
 .page.page-pos {
   max-width: 100%;
   padding: 18px 24px;
+}
+
+.page.page-login {
+  max-width: 100%;
+  padding: 0;
+}
+
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Checkout confirmation modal: restarts automatically each time JS flips
+   display none -> flex, no script changes needed. */
+#checkout-confirm-modal {
+  animation: modalBackdropIn .15s ease;
+}
+
+#checkout-confirm-modal > div {
+  animation: modalCardIn .18s cubic-bezier(.2, .8, .2, 1);
+}
+
+@keyframes modalBackdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalCardIn {
+  from { opacity: 0; transform: translateY(10px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+
+/* --- Login screen: centered, matches the approved mockup --- */
+
+.login-mode .bare-header {
+  display: none;
+}
+
+.login-screen {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-dots {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, #d8e5de 1.4px, transparent 1.4px);
+  background-size: 26px 26px;
+  opacity: .55;
+}
+
+.login-glow {
+  position: absolute;
+  top: -220px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 900px;
+  height: 560px;
+  border-radius: 999px;
+  background: radial-gradient(closest-side, rgba(14, 107, 88, .14), rgba(14, 107, 88, 0) 72%);
+}
+
+.login-stack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  padding: 40px 20px;
+  animation: pageFadeIn .35s ease;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.login-brand-mark {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.login-brand-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.login-brand-tag {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.login-card {
+  width: 380px;
+  max-width: calc(100vw - 40px);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card), 0 16px 40px rgba(20, 30, 25, .08);
+  padding: 34px 32px 30px;
+}
+
+.login-card h1 {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.login-sub {
+  margin: 0 0 24px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.login-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-card label {
+  font-size: 12.5px;
+}
+
+.login-card button {
+  margin-top: 6px;
+  min-height: 44px;
+}
+
+.login-help {
+  margin: 20px 0 0;
+  font-size: 12.5px;
+  color: #7a8b84;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.login-footnote {
+  font-size: 11.5px;
+  color: #92a39c;
+  letter-spacing: .02em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
 }
 
 .heading {
@@ -297,6 +520,23 @@ h1, h2, h3 {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
+}
+
+.stats article {
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.stats article:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(20, 30, 25, .08);
+}
+
+tbody tr {
+  transition: background-color .12s ease;
+}
+
+tbody tr:hover td {
+  background: var(--bg);
 }
 
 .panel {
@@ -388,11 +628,17 @@ button {
   font-weight: 600;
   padding: 10px 16px;
   min-height: 40px;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .08s ease;
 }
 
 .button:hover,
 button:hover {
   border-color: var(--accent);
+}
+
+.button:active,
+button:active {
+  transform: scale(.97);
 }
 
 .button.primary,
@@ -440,6 +686,11 @@ select {
   width: 100%;
   color: var(--ink);
   background: #fff;
+}
+
+input,
+select {
+  transition: border-color .15s ease, outline-color .15s ease;
 }
 
 input:focus,
@@ -960,7 +1211,12 @@ label {
 }
 
 @media (max-width: 900px) {
-  .sidebar {
+  /* The collapsed icon-rail is a desktop idea; on mobile the sidebar is
+     either fully open (overlay) or fully hidden, so ignore any collapsed
+     state remembered from a desktop visit on this same browser. */
+  .sidebar,
+  body.sidebar-collapsed .sidebar {
+    width: 260px;
     position: fixed;
     inset: 0 auto 0 0;
     z-index: 50;
@@ -970,6 +1226,17 @@ label {
 
   .sidebar.is-open {
     transform: translateX(0);
+  }
+
+  .sidebar-collapse-toggle {
+    display: none;
+  }
+
+  body.sidebar-collapsed .sidebar-link-text,
+  body.sidebar-collapsed .sidebar-brand-text,
+  body.sidebar-collapsed .sidebar-group-label,
+  body.sidebar-collapsed .sidebar-user-info {
+    display: revert;
   }
 
   .sidebar-toggle {
