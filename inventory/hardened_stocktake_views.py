@@ -40,6 +40,12 @@ def stocktake_save_count(request, zone_id):
     if not product:
         return JsonResponse({"unknown": True, "barcode": barcode}, status=404)
 
+    existing_count = StocktakeCount.objects.filter(
+        session=zone.session,
+        zone=zone,
+        product=product,
+    ).first()
+
     return JsonResponse({
         "ok": True,
         "lookup": True,
@@ -50,6 +56,15 @@ def stocktake_save_count(request, zone_id):
         "selling_price": str(product.selling_price),
         "cost_price": str(product.cost_price),
         "reorder_level": product.reorder_level,
+        "existing_count": {
+            "id": existing_count.pk,
+            "good_quantity": existing_count.good_quantity,
+            "damaged_quantity": existing_count.damaged_quantity,
+            "expired_quantity": existing_count.expired_quantity,
+            "reserved_quantity": existing_count.reserved_quantity,
+            "note": existing_count.note,
+            "status": existing_count.status,
+        } if existing_count else None,
     })
 
 
