@@ -211,6 +211,33 @@ class OpeningStocktakeTests(TestCase):
         self.assertEqual(existing.damaged_quantity, 1)
         self.assertEqual(existing.reserved_quantity, 2)
         self.assertEqual(existing.note, "Corrected physical count")
+        payload = response.json()
+        self.assertEqual(payload["barcode_display"], self.product.barcode)
+        self.assertEqual(payload["category"], "")
+
+    def test_manual_barcode_count_update_keeps_no_barcode_display(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        product = Product.objects.create(
+            name="Loose Rice",
+            barcode="MANUAL-ABC123",
+            selling_price=Decimal("1200.00"),
+        )
+        StocktakeCount.objects.create(
+            session=self.session,
+            zone=self.zone,
+            product=product,
+            good_quantity=4,
+            approved_good_quantity=4,
+            counted_by=self.clerk,
+        )
+        self.client.force_login(self.clerk)
+        response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": product.barcode,
+            "good_quantity": 6,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["barcode_display"], "No barcode")
 
     def test_recent_count_has_edit_action(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
