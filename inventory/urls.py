@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import audit_views, granular_stocktake_views, security_views, staff_access_views, views
+from . import audit_views, granular_stocktake_views, receiving_views, security_views, staff_access_views, views
 from .hardened_sync import api_sync_offline
 
 
@@ -10,7 +10,17 @@ urlpatterns = [
     path("products/new/", views.product_create, name="product_create"),
     path("products/<int:pk>/edit/", security_views.product_update, name="product_update"),
     path("products/<int:pk>/toggle/", views.product_toggle_active, name="product_toggle_active"),
-    path("stock/receive/", views.receive_stock, name="receive_stock"),
+    path("products/<int:pk>/delete/", security_views.product_delete, name="product_delete"),
+    path("stock/receive/", receiving_views.receipt_list, name="receive_stock"),
+    path("stock/receive/new/", receiving_views.receipt_create, name="stock_receipt_create"),
+    path("stock/receive/<int:receipt_id>/", receiving_views.receipt_detail, name="stock_receipt_detail"),
+    path("stock/receive/<int:receipt_id>/lines/add/", receiving_views.receipt_add_line, name="stock_receipt_add_line"),
+    path("stock/receive/<int:receipt_id>/lines/<int:line_id>/update/", receiving_views.receipt_update_line, name="stock_receipt_update_line"),
+    path("stock/receive/<int:receipt_id>/lines/<int:line_id>/delete/", receiving_views.receipt_delete_line, name="stock_receipt_delete_line"),
+    path("stock/receive/<int:receipt_id>/submit/", receiving_views.receipt_submit, name="stock_receipt_submit"),
+    path("stock/receive/<int:receipt_id>/apply/", receiving_views.receipt_apply, name="stock_receipt_apply"),
+    path("stock/receive/<int:receipt_id>/cancel/", receiving_views.receipt_cancel, name="stock_receipt_cancel"),
+    path("stock/receive/api/products/search/", receiving_views.receipt_product_search, name="stock_receipt_product_search"),
     path("stocktakes/", granular_stocktake_views.stocktake_list, name="stocktake_list"),
     path("stocktakes/new/", granular_stocktake_views.stocktake_create, name="stocktake_create"),
     path("stocktakes/<int:session_id>/", granular_stocktake_views.stocktake_detail, name="stocktake_detail"),
