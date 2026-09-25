@@ -495,9 +495,17 @@ class RoleAndOfflineTests(TestCase):
         self.assertEqual(movement.quantity, 15)
         self.assertIn("Audit correction", movement.note)
 
-    def test_receive_stock_on_the_fly_creation(self):
+    def test_receive_stock_uses_pending_receipt_workflow(self):
+        from .models import StockReceipt
+
         self.client.login(username="stock_clerk_user", password="pw")
-        response = self.client.post(reverse("receive_stock"), {
+        response = self.client.post(reverse("stock_receipt_create"), {
+            "reference": "Initial delivery",
+        })
+        receipt = StockReceipt.objects.get()
+        self.assertRedirects(response, reverse("stock_receipt_detail", args=[receipt.pk]))
+
+        response = self.client.post(reverse("stock_receipt_add_line", args=[receipt.pk]), {
             "barcode": "9999",
             "quantity": 20,
             "name": "Fresh Orange Juice",
@@ -506,11 +514,12 @@ class RoleAndOfflineTests(TestCase):
             "reorder_level": 5,
             "note": "Initial delivery",
         })
-        self.assertRedirects(response, reverse("receive_stock"))
-        
+        self.assertRedirects(response, reverse("stock_receipt_detail", args=[receipt.pk]))
+
         new_prod = Product.objects.get(barcode="9999")
         self.assertEqual(new_prod.name, "Fresh Orange Juice")
-        self.assertEqual(new_prod.stock_on_hand, 20)
+        self.assertEqual(new_prod.stock_on_hand, 0)
+        self.assertEqual(receipt.lines.get(product=new_prod).quantity_received, 20)
 
     def test_api_active_catalog(self):
         self.client.login(username="cashier_user", password="pw")
