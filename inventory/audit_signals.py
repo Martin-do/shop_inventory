@@ -7,9 +7,9 @@ from django.dispatch import receiver
 
 from .audit_context import get_current_request
 from .login_throttle import client_ip
-from .models import AuditLog, Category, Customer, Product, Sale, SaleItem, StockMovement, StoreSettings, UserProfile
+from .models import AuditLog, Category, Customer, Product, Sale, SaleItem, StockMovement, StockReceipt, StockReceiptLine, StoreSettings, UserProfile
 
-AUDITED_MODELS = (Category, Customer, Product, Sale, SaleItem, StockMovement, StoreSettings, UserProfile)
+AUDITED_MODELS = (Category, Customer, Product, Sale, SaleItem, StockMovement, StockReceipt, StockReceiptLine, StoreSettings, UserProfile)
 _before_state = {}
 
 
