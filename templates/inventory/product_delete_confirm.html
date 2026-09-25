@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Delete {{ product.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'product_list' %}">← Products</a>
+<section class="heading" style="margin-top:12px"><div><h1>Delete product permanently</h1><p style="margin:4px 0 0;color:var(--muted)">Permanent deletion is only for mistaken or duplicate catalogue records that have never been used.</p></div></section>
+<section class="panel" style="max-width:720px">
+  <h2 style="margin-top:0">{{ product.name }}</h2>
+  <p>{{ product.barcode }}{% if product.variant %} · {{ product.variant }}{% endif %}</p>
+
+  {% if blockers %}
+    <div class="message error" style="position:static;opacity:1;transform:none;margin:14px 0">
+      <div>
+        <strong>This product cannot be permanently deleted.</strong>
+        <ul style="margin:8px 0 0;padding-left:20px">{% for blocker in blockers %}<li>{{ blocker }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+    <p style="color:var(--muted)">For anything with sales, stock, receipt or stocktake history, deactivation is the safe option because it preserves the audit trail.</p>
+    <a class="button" href="{% url 'product_list' %}">Back to Products</a>
+  {% else %}
+    <div class="pending-note" style="padding:12px;border:1px solid var(--amber-line);background:var(--amber-tint);border-radius:var(--radius-md);margin:14px 0">
+      This record is inactive, has zero stock, and has no protected transaction history. It is eligible for permanent deletion.
+    </div>
+    <form method="post" onsubmit="return confirm('Permanently delete this unused product? This cannot be undone.')">
+      {% csrf_token %}
+      <button class="button danger" type="submit">Permanently Delete Product</button>
+      <a class="button" href="{% url 'product_list' %}">Cancel</a>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}
