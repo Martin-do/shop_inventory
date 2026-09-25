@@ -143,9 +143,10 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, 'data-suggest-field="name"')
         self.assertContains(response, 'data-suggest-field="variant"')
         self.assertContains(response, 'data-suggest-field="category"')
-        self.assertContains(response, 'data-suggest-autofill="full-edit"')
+        self.assertContains(response, 'data-suggest-autofill="product-details"')
+        self.assertGreaterEqual(response.content.decode().count('data-suggest-autofill="product-details"'), 2)
         self.assertContains(response, "autofillSuggestedProduct")
-        self.assertContains(response, "Saved product details filled in")
+        self.assertContains(response, "Related product details filled automatically")
         self.assertContains(response, reverse("stocktake_product_search"))
 
     def test_mobile_count_page_contains_camera_scanner_and_manual_fallback(self):
