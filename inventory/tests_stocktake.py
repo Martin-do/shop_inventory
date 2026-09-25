@@ -155,6 +155,81 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, "Start Camera Scanner")
         self.assertContains(response, "Manual barcode entry", html=False)
 
+    def test_existing_count_is_returned_for_editing(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        count = StocktakeCount.objects.create(
+            session=self.session,
+            zone=self.zone,
+            product=self.product,
+            good_quantity=9,
+            damaged_quantity=2,
+            expired_quantity=1,
+            reserved_quantity=3,
+            approved_good_quantity=9,
+            note="Needs recount",
+            counted_by=self.clerk,
+        )
+        self.client.force_login(self.clerk)
+        response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": self.product.barcode,
+            "lookup_only": "1",
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["existing_count"]["id"], count.pk)
+        self.assertEqual(payload["existing_count"]["good_quantity"], 9)
+        self.assertEqual(payload["existing_count"]["damaged_quantity"], 2)
+        self.assertEqual(payload["existing_count"]["expired_quantity"], 1)
+        self.assertEqual(payload["existing_count"]["reserved_quantity"], 3)
+        self.assertEqual(payload["existing_count"]["note"], "Needs recount")
+
+    def test_saving_existing_count_updates_instead_of_creating_duplicate(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        existing = StocktakeCount.objects.create(
+            session=self.session,
+            zone=self.zone,
+            product=self.product,
+            good_quantity=5,
+            approved_good_quantity=5,
+            counted_by=self.clerk,
+        )
+        self.client.force_login(self.clerk)
+        response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": self.product.barcode,
+            "good_quantity": 13,
+            "damaged_quantity": 1,
+            "expired_quantity": 0,
+            "reserved_quantity": 2,
+            "note": "Corrected physical count",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(StocktakeCount.objects.count(), 1)
+        existing.refresh_from_db()
+        self.assertEqual(existing.good_quantity, 13)
+        self.assertEqual(existing.damaged_quantity, 1)
+        self.assertEqual(existing.reserved_quantity, 2)
+        self.assertEqual(existing.note, "Corrected physical count")
+
+    def test_recent_count_has_edit_action(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        StocktakeCount.objects.create(
+            session=self.session,
+            zone=self.zone,
+            product=self.product,
+            good_quantity=7,
+            approved_good_quantity=7,
+            counted_by=self.clerk,
+        )
+        self.client.force_login(self.clerk)
+        response = self.client.get(reverse("stocktake_count_zone", args=[self.zone.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="button edit-count"')
+        self.assertContains(response, f'data-barcode="{self.product.barcode}"')
+        self.assertContains(response, "Use Edit to reload a saved count")
+
     def test_stocktake_search_suggests_from_first_character(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
         self.session.save(update_fields=["status"])
