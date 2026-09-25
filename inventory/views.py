@@ -19,6 +19,7 @@ from .forms import (
     StoreSettingsForm, CustomerForm, CategoryForm, StaffForm
 )
 from .models import Product, Sale, SaleItem, StockMovement, Customer, StoreSettings, Category, BackupLog, UserProfile
+from .stocktake_models import StocktakeSession
 
 
 from django.contrib.auth.views import redirect_to_login
@@ -96,7 +97,43 @@ def product_list(request):
     products = Product.objects.select_related("category").with_stock()
     if query:
         products = products.filter(name__icontains=query) | products.filter(barcode__icontains=query)
-    return render(request, "inventory/product_list.html", {"products": products, "query": query})
+
+    products = list(products)
+    pending_session = (
+        StocktakeSession.objects.filter(
+            status__in=[
+                StocktakeSession.STATUS_DRAFT,
+                StocktakeSession.STATUS_COUNTING,
+                StocktakeSession.STATUS_REVIEW,
+            ],
+            counts__isnull=False,
+        )
+        .distinct()
+        .order_by("-created_at")
+        .first()
+    )
+    if pending_session:
+        pending_by_product = {
+            row["product_id"]: row["pending_quantity"] or 0
+            for row in pending_session.counts.values("product_id").annotate(
+                pending_quantity=Sum("approved_good_quantity")
+            )
+        }
+        for product in products:
+            product.pending_stocktake_quantity = pending_by_product.get(product.pk)
+    else:
+        for product in products:
+            product.pending_stocktake_quantity = None
+
+    return render(
+        request,
+        "inventory/product_list.html",
+        {
+            "products": products,
+            "query": query,
+            "pending_stocktake_session": pending_session,
+        },
+    )
 
 
 @role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
