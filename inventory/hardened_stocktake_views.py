@@ -10,7 +10,13 @@ from .access_control import has_access
 from .audit_signals import log_event
 from .models import AuditLog, Category, Product, StockMovement, UserProfile
 from .stocktake_models import StocktakeCount, StocktakeZone
-from .stocktake_views import _can_access_zone, _event, stocktake_save_count as legacy_save_count
+from .stocktake_views import (
+    MAX_STOCKTAKE_QUANTITY,
+    _can_access_zone,
+    _event,
+    _parse_stocktake_quantities,
+    stocktake_save_count as legacy_save_count,
+)
 from .views import role_required
 
 
@@ -126,12 +132,14 @@ def stocktake_quick_product(request, zone_id):
         return JsonResponse({"error": "Prices cannot be negative."}, status=400)
 
     try:
-        quantities = {
-            key: max(0, int(request.POST.get(key, 0) or 0))
-            for key in ("good_quantity", "damaged_quantity", "expired_quantity", "reserved_quantity")
-        }
+        quantities = _parse_stocktake_quantities(request)
     except (TypeError, ValueError):
-        return JsonResponse({"error": "Stock quantities must be whole numbers."}, status=400)
+        return JsonResponse({
+            "error": (
+                f"Stock quantities must be whole numbers from 0 to {MAX_STOCKTAKE_QUANTITY:,}. "
+                "Very large values are blocked because they are often scanned barcodes."
+            )
+        }, status=400)
 
     category_name = request.POST.get("category", "").strip()
     category = None
@@ -218,12 +226,14 @@ def stocktake_edit_record(request, count_id):
         return JsonResponse({"error": "This stocktake record is no longer editable."}, status=403)
 
     try:
-        quantities = {
-            key: max(0, int(request.POST.get(key, 0) or 0))
-            for key in ("good_quantity", "damaged_quantity", "expired_quantity", "reserved_quantity")
-        }
+        quantities = _parse_stocktake_quantities(request)
     except (TypeError, ValueError):
-        return JsonResponse({"error": "Stock quantities must be whole numbers."}, status=400)
+        return JsonResponse({
+            "error": (
+                f"Stock quantities must be whole numbers from 0 to {MAX_STOCKTAKE_QUANTITY:,}. "
+                "Very large values are blocked because they are often scanned barcodes."
+            )
+        }, status=400)
 
     note = request.POST.get("note", "").strip()[:240]
     can_edit_product = has_access(request.user, "edit_products")
