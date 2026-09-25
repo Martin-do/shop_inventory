@@ -160,6 +160,8 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, "Manual barcode entry", html=False)
         self.assertContains(response, 'id="lookup-suggest-menu"')
         self.assertContains(response, "Scan barcode or type product name")
+        self.assertContains(response, "function closeCamera()")
+        self.assertContains(response, "Camera closed so you can finish the entry.")
 
     def test_existing_count_is_returned_for_editing(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
