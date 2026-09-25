@@ -44,7 +44,7 @@
         <label>Category<input name="category"></label>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <label>Selling price<input name="selling_price" type="number" min="0" step="0.01"></label>
-          <label>Cost price<input name="cost_price" type="number" min="0" step="0.01"></label>
+          {% if can_change_cost %}<label>Cost price<input name="cost_price" type="number" min="0" step="0.01"></label>{% endif %}
         </div>
         <label>Low-stock alert level<input name="reorder_level" type="number" min="0" value="5"></label>
       </div>
