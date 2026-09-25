@@ -138,30 +138,10 @@ def stocktake_count_zone(request, zone_id):
         return redirect("stocktake_detail", session_id=zone.session_id)
 
     recent = zone.counts.select_related("product", "counted_by").order_by("-counted_at")[:30]
-    active_products = Product.objects.filter(is_active=True)
-    product_name_suggestions = list(
-        active_products.order_by("name").values_list("name", flat=True).distinct()[:250]
-    )
-    variant_suggestions = list(
-        active_products.exclude(variant="")
-        .order_by("variant")
-        .values_list("variant", flat=True)
-        .distinct()[:250]
-    )
-    category_suggestions = list(
-        Category.objects.order_by("name").values_list("name", flat=True)[:250]
-    )
     return render(
         request,
         "inventory/stocktake_count.html",
-        {
-            "zone": zone,
-            "session": zone.session,
-            "recent": recent,
-            "product_name_suggestions": product_name_suggestions,
-            "variant_suggestions": variant_suggestions,
-            "category_suggestions": category_suggestions,
-        },
+        {"zone": zone, "session": zone.session, "recent": recent},
     )
 
 
