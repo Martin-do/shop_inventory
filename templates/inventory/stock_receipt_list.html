@@ -29,7 +29,7 @@
     <tbody>
     {% for receipt in receipts %}
       <tr>
-        <td style="padding-left:20px"><strong>{{ receipt.reference|default:"Receipt #"|add:receipt.id }}</strong></td>
+        <td style="padding-left:20px"><strong>{% if receipt.reference %}{{ receipt.reference }}{% else %}Receipt #{{ receipt.id }}{% endif %}</strong></td>
         <td>{{ receipt.supplier|default:"-" }}</td>
         <td>
           {% if receipt.status == "applied" %}<span class="badge badge-ok">Applied</span>
