@@ -158,6 +158,8 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, "BarcodeDetector")
         self.assertContains(response, "Start Camera Scanner")
         self.assertContains(response, "Manual barcode entry", html=False)
+        self.assertContains(response, 'id="lookup-suggest-menu"')
+        self.assertContains(response, "Scan barcode or type product name")
 
     def test_existing_count_is_returned_for_editing(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
@@ -262,6 +264,42 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, "Use Edit to reload a saved count")
         self.assertContains(response, 'id="count-search"')
         self.assertContains(response, 'data-search="milk 12345670')
+
+    def test_counted_product_search_has_server_side_fallback(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        second = Product.objects.create(
+            name="Golden Penny Sugar",
+            barcode="SUGAR-001",
+            variant="1kg",
+            selling_price=Decimal("1500.00"),
+        )
+        StocktakeCount.objects.create(
+            session=self.session,
+            zone=self.zone,
+            product=self.product,
+            good_quantity=4,
+            approved_good_quantity=4,
+            counted_by=self.clerk,
+        )
+        StocktakeCount.objects.create(
+            session=self.session,
+            zone=self.zone,
+            product=second,
+            good_quantity=9,
+            approved_good_quantity=9,
+            counted_by=self.clerk,
+        )
+        self.client.force_login(self.clerk)
+        response = self.client.get(
+            reverse("stocktake_count_zone", args=[self.zone.pk]),
+            {"q": "sugar"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Golden Penny Sugar")
+        self.assertNotContains(response, ">Milk<", html=False)
+        self.assertEqual(response.context["count_search_query"], "sugar")
+        self.assertEqual(len(response.context["recent"]), 1)
 
     def test_counted_product_search_includes_counts_beyond_first_thirty(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
