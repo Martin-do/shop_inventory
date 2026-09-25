@@ -219,8 +219,8 @@
    fullEditForm.querySelector('[name=note]').value=count.note||'';
    document.getElementById('full-live-stock').textContent=j.live_stock;
    ['name','barcode','variant','category','reorder_level'].forEach(name=>fullEditForm.querySelector('[name='+name+']').disabled=!perms.edit_product);
-   fullEditForm.querySelector('[name=selling_price]').disabled=!perms.change_selling_price;
-   const costField=document.getElementById('full-cost-field');costField.hidden=!perms.view_cost_price;fullEditForm.querySelector('[name=cost_price]').disabled=!perms.change_cost_price;
+   fullEditForm.querySelector('[name=selling_price]').disabled=!(perms.edit_product&&perms.change_selling_price);
+   const costField=document.getElementById('full-cost-field');costField.hidden=!perms.view_cost_price;fullEditForm.querySelector('[name=cost_price]').disabled=!(perms.edit_product&&perms.change_cost_price);
    const warning=document.getElementById('stocktake-reconcile-note');
    if(j.manual_adjustment_during_stocktake){
      warning.hidden=false;
