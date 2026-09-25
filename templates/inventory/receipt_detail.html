@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}{{ receipt.reference }}{% endblock %}
+{% block content %}
+<section class="heading">
+  <div>
+    <a href="{% url 'receive_stock' %}" style="font-size:13px;">← Stock receipts</a>
+    <h1 style="margin-top:8px;">{{ receipt.reference }}</h1>
+    <p style="margin:4px 0 0;color:var(--muted);font-size:13px;">
+      {{ receipt.supplier|default:"No supplier recorded" }}
+      {% if receipt.invoice_reference %} · Invoice {{ receipt.invoice_reference }}{% endif %}
+    </p>
+  </div>
+  <div class="actions">
+    {% if receipt.status == "draft" %}
+      <span class="badge">Draft</span>
+    {% elif receipt.status == "submitted" %}
+      <span class="badge badge-low">Awaiting approval</span>
+    {% elif receipt.status == "applied" %}
+      <span class="badge badge-ok">Applied</span>
+    {% endif %}
+  </div>
+</section>
+
+{% if receipt.status == "draft" %}
+<section class="panel" style="margin-bottom:18px;">
+  <h2 style="margin-top:0;">Add delivered product</h2>
+  <p style="color:var(--muted);font-size:13px;">Search or scan an existing product. If it is new, fill the product details. Quantities remain pending until approval.</p>
+  <form method="post" action="{% url 'stock_receipt_add_line' receipt.pk %}" id="receipt-line-form" class="form">
+    {% csrf_token %}
+    <label>Barcode / product search
+      <div style="position:relative;">
+        <input name="barcode" id="receipt-product-search" autocomplete="off" placeholder="Scan barcode or type product name">
+        <div id="receipt-product-suggestions" class="panel" style="display:none;position:absolute;z-index:40;top:100%;left:0;right:0;padding:6px;max-height:260px;overflow:auto;"></div>
+      </div>
+    </label>
+    <div id="receipt-found-product" style="display:none;padding:10px 12px;border:1px solid var(--line);border-radius:10px;"></div>
+
+    {% if can_create_products %}
+    <details id="new-product-details" style="margin:8px 0;">
+      <summary style="cursor:pointer;font-weight:600;">New product details</summary>
+      <div class="form" style="margin-top:12px;">
+        <label>Product name<input name="name"></label>
+        <label>Variant / size<input name="variant"></label>
+        <label>Category<input name="category"></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <label>Selling price<input name="selling_price" type="number" min="0" step="0.01"></label>
+          <label>Cost price<input name="cost_price" type="number" min="0" step="0.01"></label>
+        </div>
+        <label>Low-stock alert level<input name="reorder_level" type="number" min="0" value="5"></label>
+      </div>
+    </details>
+    {% endif %}
+
+    <div style="display:grid;grid-template-columns:180px 1fr;gap:12px;align-items:end;">
+      <label>Quantity received<input name="quantity" type="number" min="1" required></label>
+      <label>Line note<input name="note" maxlength="240" placeholder="Optional condition, pack count, etc."></label>
+    </div>
+    <button class="button primary" type="submit">Add to Receipt</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="panel" style="padding:0;overflow-x:auto;">
+  <table>
+    <thead><tr><th style="padding-left:20px;">Product</th><th>Entered</th><th>Approved</th><th>Status</th><th>Entered by</th><th style="padding-right:20px;">Action</th></tr></thead>
+    <tbody>
+      {% for line in lines %}
+      <tr>
+        <td style="padding-left:20px;"><strong>{{ line.product.name }}</strong>{% if line.product.variant %} <span style="color:var(--muted);">({{ line.product.variant }})</span>{% endif %}<br><small>{% if line.product.barcode|slice:":7" == "MANUAL-" %}No physical barcode{% else %}{{ line.product.barcode }}{% endif %}</small></td>
+        <td><strong>{{ line.quantity_received }}</strong>{% if line.note %}<br><small>{{ line.note }}</small>{% endif %}</td>
+        <td>{% if line.approved_quantity != None %}<strong>{{ line.approved_quantity }}</strong>{% else %}-{% endif %}</td>
+        <td>{% if line.status == "approved" %}<span class="badge badge-ok">Approved</span>{% else %}<span class="badge badge-low">Pending</span>{% endif %}</td>
+        <td>{{ line.entered_by.username }}</td>
+        <td style="padding-right:20px;">
+          {% if receipt.status == "draft" %}
+          <form method="post" action="{% url 'stock_receipt_remove_line' receipt.pk line.pk %}" onsubmit="return confirm('Remove this product from the draft receipt?');">
+            {% csrf_token %}<button class="button" type="submit">Remove</button>
+          </form>
+          {% elif receipt.status == "submitted" and can_review %}
+          <form method="post" action="{% url 'stock_receipt_review_line' receipt.pk line.pk %}" style="display:flex;gap:6px;align-items:center;">
+            {% csrf_token %}
+            <input name="approved_quantity" type="number" min="0" value="{{ line.approved_quantity|default:line.quantity_received }}" style="width:86px;">
+            <button class="button" type="submit">{% if line.status == "approved" %}Update{% else %}Approve{% endif %}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" style="padding:24px 20px;color:var(--muted);">No delivered products added yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if receipt.status == "draft" %}
+<form method="post" action="{% url 'stock_receipt_submit' receipt.pk %}" style="margin-top:16px;">
+  {% csrf_token %}
+  <button class="button primary" type="submit">Submit Receipt for Approval</button>
+  <span style="font-size:13px;color:var(--muted);margin-left:8px;">Submitting does not change live stock.</span>
+</form>
+{% elif receipt.status == "submitted" %}
+<section class="panel" style="margin-top:16px;">
+  <h3 style="margin-top:0;">Approval status</h3>
+  <p style="color:var(--muted);">{{ unapproved_count }} line{{ unapproved_count|pluralize }} still awaiting approval.</p>
+  {% if active_stocktake_products %}
+  <div class="message warning" style="position:static;margin:10px 0;">
+    Some products in this receipt are part of an active stocktake. The receipt can be reviewed now, but application will be blocked until that stocktake is applied or cancelled.
+  </div>
+  {% endif %}
+  {% if can_apply %}
+  <form method="post" action="{% url 'stock_receipt_apply' receipt.pk %}">
+    {% csrf_token %}
+    <button class="button primary" type="submit" {% if unapproved_count %}disabled title="Approve every line first"{% endif %}>Apply Approved Receipt to Live Stock</button>
+  </form>
+  {% endif %}
+</section>
+{% elif receipt.status == "applied" %}
+<section class="panel" style="margin-top:16px;">
+  <strong>Applied {{ receipt.applied_at|date:"Y-m-d H:i" }}</strong>
+  <p style="margin-bottom:0;color:var(--muted);">Live stock was increased using the approved quantities above. Applied by {{ receipt.applied_by.username }}.</p>
+</section>
+{% endif %}
+
+{% if receipt.status == "draft" %}
+<script>
+(() => {
+  const input = document.getElementById("receipt-product-search");
+  const menu = document.getElementById("receipt-product-suggestions");
+  const found = document.getElementById("receipt-found-product");
+  if (!input || !menu) return;
+  let timer = null;
+  let controller = null;
+
+  const hide = () => { menu.style.display = "none"; menu.replaceChildren(); };
+
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (!q) { hide(); found.style.display = "none"; return; }
+    timer = setTimeout(async () => {
+      if (controller) controller.abort();
+      controller = new AbortController();
+      try {
+        const response = await fetch("{% url 'api_product_search' %}?q=" + encodeURIComponent(q), {signal: controller.signal});
+        if (!response.ok) return hide();
+        const payload = await response.json();
+        menu.replaceChildren();
+        (payload.results || []).forEach((product) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "button";
+          button.style.cssText = "display:block;width:100%;text-align:left;margin:2px 0;";
+          button.textContent = product.name + (product.variant ? " (" + product.variant + ")" : "") + " · " + product.barcode;
+          button.addEventListener("click", () => {
+            input.value = product.barcode;
+            found.textContent = product.name + (product.variant ? " (" + product.variant + ")" : "") + " · Current stock: " + product.stock;
+            found.style.display = "block";
+            hide();
+            const qty = document.querySelector('[name="quantity"]');
+            if (qty) qty.focus();
+          });
+          menu.appendChild(button);
+        });
+        menu.style.display = menu.childElementCount ? "block" : "none";
+      } catch (error) {
+        if (error.name !== "AbortError") hide();
+      }
+    }, 150);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!menu.contains(event.target) && event.target !== input) hide();
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}
