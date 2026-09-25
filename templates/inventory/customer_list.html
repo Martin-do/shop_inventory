@@ -6,12 +6,12 @@
   <a class="button primary" href="{% url 'customer_create' %}">Add Customer</a>
 </section>
 
-<form class="search" method="get">
-  <input name="q" value="{{ query }}" placeholder="Search by name or phone number...">
+<form class="search" method="get" data-live-search data-live-target="#customer-search-results">
+  <input name="q" value="{{ query }}" placeholder="Search by name or phone number..." autocomplete="off">
   <button class="button">Search</button>
 </form>
 
-<section class="panel">
+<section id="customer-search-results" class="panel" aria-live="polite">
   <table>
     <thead>
       <tr>
