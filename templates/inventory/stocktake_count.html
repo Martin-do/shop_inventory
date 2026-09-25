@@ -55,9 +55,9 @@
 <p class="form-note">No barcode? Leave this blank. The system will create an internal stock code automatically.</p>
 <label>Product name</label><input name="name" id="new-name" list="product-name-suggestions" required placeholder="e.g. Peak Milk" autocomplete="off">
 <div class="details-grid"><div><label>Variant / size</label><input name="variant" list="variant-suggestions" placeholder="e.g. 400g" autocomplete="off"></div><div><label>Category</label><input name="category" list="category-suggestions" placeholder="e.g. Provisions" autocomplete="off"></div></div>
-<datalist id="product-name-suggestions">{% for value in product_name_suggestions %}<option value="{{ value }}">{% endfor %}</datalist>
-<datalist id="variant-suggestions">{% for value in variant_suggestions %}<option value="{{ value }}">{% endfor %}</datalist>
-<datalist id="category-suggestions">{% for value in category_suggestions %}<option value="{{ value }}">{% endfor %}</datalist>
+<datalist id="product-name-suggestions">{% for value in product_name_suggestions %}<option value="{{ value }}"></option>{% endfor %}</datalist>
+<datalist id="variant-suggestions">{% for value in variant_suggestions %}<option value="{{ value }}"></option>{% endfor %}</datalist>
+<datalist id="category-suggestions">{% for value in category_suggestions %}<option value="{{ value }}"></option>{% endfor %}</datalist>
 <div class="details-grid"><div><label>Selling price</label><input name="selling_price" type="number" min="0" step="0.01" value="0"></div><div><label>Cost price</label><input name="cost_price" type="number" min="0" step="0.01" value="0"></div></div>
 <label>Low-stock alert level</label><input name="reorder_level" type="number" min="0" value="5">
 <div class="stock-entry-box">
