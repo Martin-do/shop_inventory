@@ -1,12 +1,13 @@
 from decimal import Decimal, InvalidOperation
 
+from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_POST
 
 from .audit_signals import log_event
 from .models import AuditLog, Category, Product, UserProfile
-from .stocktake_models import StocktakeZone
+from .stocktake_models import StocktakeCount, StocktakeZone
 from .stocktake_views import _can_access_zone, _event, stocktake_save_count as legacy_save_count
 from .views import role_required
 
@@ -45,6 +46,7 @@ def stocktake_save_count(request, zone_id):
 
 @role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
 @require_POST
+@transaction.atomic
 def stocktake_quick_product(request, zone_id):
     zone = get_object_or_404(StocktakeZone.objects.select_related("session"), pk=zone_id)
     if not _can_access_zone(request.user, zone) or not zone.session.can_count or zone.is_complete:
@@ -67,6 +69,14 @@ def stocktake_quick_product(request, zone_id):
     if selling_price < 0 or cost_price < 0:
         return JsonResponse({"error": "Prices cannot be negative."}, status=400)
 
+    try:
+        quantities = {
+            key: max(0, int(request.POST.get(key, 0) or 0))
+            for key in ("good_quantity", "damaged_quantity", "expired_quantity", "reserved_quantity")
+        }
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "Stock quantities must be whole numbers."}, status=400)
+
     category_name = request.POST.get("category", "").strip()
     category = None
     if category_name:
@@ -81,6 +91,19 @@ def stocktake_quick_product(request, zone_id):
         reorder_level=reorder_level,
         category=category,
     )
+    count = StocktakeCount.objects.create(
+        session=zone.session,
+        zone=zone,
+        product=product,
+        good_quantity=quantities["good_quantity"],
+        damaged_quantity=quantities["damaged_quantity"],
+        expired_quantity=quantities["expired_quantity"],
+        reserved_quantity=quantities["reserved_quantity"],
+        approved_good_quantity=quantities["good_quantity"],
+        counted_by=request.user,
+        note=request.POST.get("note", "").strip()[:240],
+        status=StocktakeCount.STATUS_COUNTED,
+    )
     _event(
         zone.session,
         request.user,
@@ -88,11 +111,23 @@ def stocktake_quick_product(request, zone_id):
         f"{product.name} created during opening stocktake.",
         {"product_id": product.pk, "barcode": barcode},
     )
+    _event(
+        zone.session,
+        request.user,
+        "count_saved",
+        f"Opening count saved for {product.name} in {zone.name}.",
+        {"count_id": count.pk, "created": True, **quantities},
+    )
     log_event(
         AuditLog.ACTION_CREATE,
         f"Product '{product.name}' created from opening stocktake.",
         instance=product,
-        metadata={"stocktake_session_id": zone.session_id, "zone_id": zone.pk},
+        metadata={
+            "stocktake_session_id": zone.session_id,
+            "zone_id": zone.pk,
+            "count_id": count.pk,
+            **quantities,
+        },
         actor=request.user,
     )
     return JsonResponse({
@@ -101,4 +136,6 @@ def stocktake_quick_product(request, zone_id):
         "variant": product.variant,
         "barcode": barcode,
         "category": category.name if category else "",
+        "count_id": count.pk,
+        "quantities": quantities,
     })
