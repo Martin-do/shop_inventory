@@ -115,6 +115,14 @@ def stocktake_quick_product(request, zone_id):
     return hardened_stocktake_views.stocktake_quick_product.__wrapped__(request, zone_id)
 
 
+def stocktake_edit_record(request, count_id):
+    count = get_object_or_404(StocktakeCount.objects.select_related("zone__session"), pk=count_id)
+    zone = count.zone
+    if not _can_view_all(request.user) and not _assigned_to_zone(request.user, zone):
+        return JsonResponse({"error": "You are not assigned to this zone."}, status=403)
+    return hardened_stocktake_views.stocktake_edit_record.__wrapped__(request, count_id)
+
+
 @login_required
 def stocktake_complete_zone(request, zone_id):
     zone = get_object_or_404(StocktakeZone.objects.select_related("session"), pk=zone_id)
