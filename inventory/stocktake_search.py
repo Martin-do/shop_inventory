@@ -8,7 +8,7 @@ from .views import role_required
 @role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
 def stocktake_product_search(request):
     query = request.GET.get("q", "").strip()
-    if len(query) < 2:
+    if not query:
         return JsonResponse({"results": []})
 
     products = (
@@ -32,6 +32,7 @@ def stocktake_product_search(request):
                 "variant": product.variant or "",
                 "category": product.category.name if product.category else "",
                 "selling_price": str(product.selling_price),
+                "cost_price": str(product.cost_price),
             }
             for product in products
         ]
