@@ -80,6 +80,7 @@ def receipt_detail(request, receipt_id):
             "can_review": has_access(request.user, "review_stock_receipts"),
             "can_apply": has_access(request.user, "apply_stock_receipts"),
             "can_create_products": has_access(request.user, "create_products"),
+            "can_change_cost": has_access(request.user, "change_cost_price"),
             "active_stocktake_products": active_stocktake_products,
         },
     )
