@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}New Stock Receipt{% endblock %}
+{% block content %}
+<section class="heading">
+  <div><h1>New Stock Receipt</h1><p style="margin:4px 0 0;color:var(--muted);font-size:13px;">Create one batch for a supplier delivery. Stock will remain unchanged until the batch is reviewed and applied.</p></div>
+  <a class="button" href="{% url 'receive_stock' %}">Back to Receipts</a>
+</section>
+
+<form method="post" class="panel form" style="max-width:760px;">
+  {% csrf_token %}
+  <label>Receipt / delivery reference
+    <input name="reference" required placeholder="e.g. Emzor delivery - 25 Sep">
+  </label>
+  <label>Supplier
+    <input name="supplier" placeholder="Optional supplier name">
+  </label>
+  <label>Invoice / waybill reference
+    <input name="invoice_reference" placeholder="Optional invoice or waybill number">
+  </label>
+  <label>Notes
+    <textarea name="notes" rows="3" placeholder="Optional delivery notes"></textarea>
+  </label>
+  <button class="button primary" type="submit">Create Receipt</button>
+</form>
+{% endblock %}
