@@ -56,7 +56,10 @@
 <form id="count-form">{% csrf_token %}
 <h3 style="margin-top:0;font-size:15px">Manual barcode entry</h3>
 <label for="barcode">Barcode or product search</label>
-<div class="lookup-row"><input id="barcode" name="barcode" inputmode="numeric" autocomplete="off" required autofocus><button class="button" type="button" id="lookup">Find product</button></div>
+<div class="suggest-wrap">
+  <div class="lookup-row"><input id="barcode" name="barcode" autocomplete="off" required autofocus placeholder="Scan barcode or type product name"><button class="button" type="button" id="lookup">Find product</button></div>
+  <div class="suggest-menu" id="lookup-suggest-menu" hidden></div>
+</div>
 <div class="new-product-actions"><button class="button" type="button" id="open-product-form">+ Add a new product</button></div>
 <div id="product-result"></div>
 <div class="qty-grid"><div><label>Good / sellable</label><input id="good-quantity" type="number" min="0" name="good_quantity" value="0"></div><div><label>Damaged</label><input type="number" min="0" name="damaged_quantity" value="0"></div><div><label>Expired</label><input type="number" min="0" name="expired_quantity" value="0"></div><div><label>Reserved</label><input type="number" min="0" name="reserved_quantity" value="0"></div></div>
@@ -110,7 +113,7 @@
 <button class="button primary" style="width:100%;margin-top:10px">Save full record</button>
 </form>
 </div>
-<div class="card"><h3 style="font-size:15px">Counted products</h3><p class="form-note">Search by product name, barcode, variant or category. Use Edit to reload a saved count, correct it, and save again.</p><div class="count-search"><input id="count-search" type="search" placeholder="Search counted products..." autocomplete="off"></div><div id="recent-list">{% for row in recent %}<div class="recent-row" data-recent-barcode="{{ row.product.barcode }}" data-search="{{ row.product.name|lower }} {{ row.product.barcode|lower }} {{ row.product.variant|lower }} {% if row.product.category %}{{ row.product.category.name|lower }}{% endif %}"><span class="recent-main"><strong>{{ row.product.name }}</strong>{% if row.product.variant %} <span class="muted">({{ row.product.variant }})</span>{% endif %}<br><small>{% if row.product.barcode|slice:":7" == "MANUAL-" %}No barcode{% else %}{{ row.product.barcode }}{% endif %}{% if row.product.category %} · {{ row.product.category.name }}{% endif %} · {{ row.counted_by.username }}</small></span><span class="recent-actions"><strong class="recent-qty">{{ row.good_quantity }}</strong><button type="button" class="button edit-count" data-barcode="{{ row.product.barcode }}">Edit</button></span></div>{% empty %}<p class="muted">No items counted yet.</p>{% endfor %}</div><p id="count-search-empty" class="count-search-empty" hidden>No counted product matches your search.</p></div>
+<div class="card"><h3 style="font-size:15px">Counted products</h3><p class="form-note">Search by product name, barcode, variant, category or counter. Use Edit to reload a saved count, correct it, and save again.</p><form method="get" class="count-search" id="count-search-form"><div class="lookup-row"><input id="count-search" name="q" type="search" value="{{ count_search_query }}" placeholder="Search counted products..." autocomplete="off"><button class="button" type="submit">Search</button></div></form><div id="recent-list">{% for row in recent %}<div class="recent-row" data-recent-barcode="{{ row.product.barcode }}" data-search="{{ row.product.name|lower }} {{ row.product.barcode|lower }} {{ row.product.variant|lower }} {% if row.product.category %}{{ row.product.category.name|lower }}{% endif %}"><span class="recent-main"><strong>{{ row.product.name }}</strong>{% if row.product.variant %} <span class="muted">({{ row.product.variant }})</span>{% endif %}<br><small>{% if row.product.barcode|slice:":7" == "MANUAL-" %}No barcode{% else %}{{ row.product.barcode }}{% endif %}{% if row.product.category %} · {{ row.product.category.name }}{% endif %} · {{ row.counted_by.username }}</small></span><span class="recent-actions"><strong class="recent-qty">{{ row.good_quantity }}</strong><button type="button" class="button edit-count" data-barcode="{{ row.product.barcode }}">Edit</button></span></div>{% empty %}<p class="muted">No items counted yet.</p>{% endfor %}</div><p id="count-search-empty" class="count-search-empty" hidden>No counted product matches your search.</p></div>
 <form method="post" action="{% url 'stocktake_complete_zone' zone.id %}" style="margin-top:12px">{% csrf_token %}<button class="button" style="width:100%;min-height:48px">Finish this zone</button></form>
 </aside></div>
 <script>
@@ -200,6 +203,47 @@
    document.addEventListener('click',e=>{if(!menu.contains(e.target)&&e.target!==input)hide();});
  }
  document.querySelectorAll('[data-suggest-field]').forEach(bindSuggestions);
+ function bindProductLookupSearch(){
+   const menu=document.getElementById('lookup-suggest-menu');
+   let timer=null, controller=null;
+   const hide=()=>{menu.hidden=true;menu.replaceChildren();};
+   const render=(products)=>{
+     menu.replaceChildren();
+     if(!products.length){hide();return;}
+     products.slice(0,8).forEach(product=>{
+       const button=document.createElement('button');button.type='button';button.className='suggest-option';
+       const strong=document.createElement('strong');strong.textContent=product.name+(product.variant?' — '+product.variant:'');button.appendChild(strong);
+       const small=document.createElement('small');small.textContent=[product.barcode_display||product.barcode,product.category].filter(Boolean).join(' · ');button.appendChild(small);
+       button.addEventListener('mousedown',e=>e.preventDefault());
+       button.addEventListener('click',async()=>{
+         barcode.value=product.barcode;
+         hide();
+         await lookupProduct();
+       });
+       menu.appendChild(button);
+     });
+     menu.hidden=false;
+   };
+   barcode.addEventListener('input',()=>{
+     productReady=false;result.textContent='';result.className='';document.getElementById('save-count').textContent='Save count';
+     clearTimeout(timer);
+     const q=barcode.value.trim();
+     if(!q){if(controller)controller.abort();hide();return;}
+     timer=setTimeout(async()=>{
+       if(controller)controller.abort();
+       controller=new AbortController();
+       try{
+         const response=await fetch(suggestionUrl+'?q='+encodeURIComponent(q),{headers:{'X-Requested-With':'XMLHttpRequest'},signal:controller.signal});
+         if(!response.ok){hide();return;}
+         const data=await response.json();
+         render(data.results||[]);
+       }catch(err){if(err.name!=='AbortError')hide();}
+     },120);
+   });
+   barcode.addEventListener('keydown',e=>{if(e.key==='Escape')hide();});
+   document.addEventListener('click',e=>{if(!menu.contains(e.target)&&e.target!==barcode)hide();});
+ }
+ bindProductLookupSearch();
  function showProductForm(code=''){unknown.hidden=false;newBarcode.value=code||'';setTimeout(()=>newName.focus(),50);}
  function setCountFields(count){
    form.querySelector('[name=good_quantity]').value=count?count.good_quantity:0;
@@ -226,7 +270,7 @@
    const actions=document.createElement('span');actions.className='recent-actions';const qty=document.createElement('strong');qty.className='recent-qty';qty.textContent=j.quantities.good_quantity;const edit=document.createElement('button');edit.type='button';edit.className='button edit-count';edit.dataset.barcode=j.barcode;edit.textContent='Edit';actions.append(qty,edit);row.append(left,actions);list.prepend(row);filterCountedProducts();
  }
  async function saveCount(){if(!productReady){const found=await lookupProduct();if(!found)return;}const updating=document.getElementById('save-count').textContent==='Update count';const data=new FormData(form);const r=await fetch('{% url "stocktake_save_count" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:data});const j=await r.json();if(r.status===404&&j.unknown){showProductForm(j.barcode);return;}if(!r.ok){toast(j.error||'Could not save count','error');return;}toast((updating?'Count updated for ':'Count saved for ')+j.product,'success');addRecentRow(j);setCountFields(null);barcode.value='';result.textContent='';result.className='';productReady=false;barcode.focus();}
- form.addEventListener('submit',e=>{e.preventDefault();saveCount().catch(()=>toast('Network error while saving','error'));});document.getElementById('lookup').onclick=()=>lookupProduct();barcode.addEventListener('input',()=>{productReady=false;result.textContent='';result.className='';document.getElementById('save-count').textContent='Save count';});barcode.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();lookupProduct();}});
+ form.addEventListener('submit',e=>{e.preventDefault();saveCount().catch(()=>toast('Network error while saving','error'));});document.getElementById('lookup').onclick=()=>lookupProduct();barcode.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();lookupProduct();}});
  async function openFullEditor(code){
    const data=new FormData();data.append('barcode',code);data.append('lookup_only','1');data.append('csrfmiddlewaretoken',csrf);
    const r=await fetch('{% url "stocktake_save_count" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:data});const j=await r.json();
@@ -259,6 +303,7 @@
  }
  document.getElementById('recent-list').addEventListener('click',e=>{const button=e.target.closest('.edit-count');if(!button)return;openFullEditor(button.dataset.barcode);});
  document.getElementById('count-search').addEventListener('input',filterCountedProducts);
+ document.getElementById('count-search-form').addEventListener('submit',()=>{});
  document.getElementById('close-full-edit').onclick=()=>{fullEditCard.hidden=true;};
  document.getElementById('use-live-stock').onclick=e=>{fullEditForm.querySelector('[name=good_quantity]').value=e.currentTarget.dataset.liveStock||0;};
  fullEditForm.addEventListener('submit',async e=>{
