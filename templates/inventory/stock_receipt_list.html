@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Stock Receipts{% endblock %}
+{% block content %}
+<section class="heading">
+  <div>
+    <h1>Stock Receipts</h1>
+    <p style="margin:4px 0 0;color:var(--muted);font-size:13px">Record deliveries first; live stock changes only after an authorised approval.</p>
+  </div>
+  {% if can_create %}<a class="button primary" href="{% url 'stock_receipt_create' %}">New Receipt</a>{% endif %}
+</section>
+
+<form method="get" class="panel" data-live-search data-live-target="#receipt-search-results" style="display:grid;grid-template-columns:2fr 1fr auto;gap:10px;align-items:end;margin-bottom:16px">
+  <label style="font-size:13px">Search
+    <input name="q" value="{{ query }}" placeholder="Supplier, reference, product or barcode" autocomplete="off">
+  </label>
+  <label style="font-size:13px">Status
+    <select name="status">
+      <option value="">All</option>
+      {% for value, label in status_choices %}<option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <button class="button" type="submit">Search</button>
+</form>
+
+<div id="receipt-search-results" aria-live="polite">
+<section class="panel" style="padding:0;overflow:auto">
+  <table>
+    <thead><tr><th style="padding-left:20px">Receipt</th><th>Supplier</th><th>Status</th><th>Lines</th><th>Units</th><th>Created by</th><th>Created</th><th style="padding-right:20px"></th></tr></thead>
+    <tbody>
+    {% for receipt in receipts %}
+      <tr>
+        <td style="padding-left:20px"><strong>{{ receipt.reference|default:"Receipt #"|add:receipt.id }}</strong></td>
+        <td>{{ receipt.supplier|default:"-" }}</td>
+        <td>
+          {% if receipt.status == "applied" %}<span class="badge badge-ok">Applied</span>
+          {% elif receipt.status == "submitted" %}<span class="badge badge-low">Awaiting approval</span>
+          {% elif receipt.status == "cancelled" %}<span class="badge badge-off">Cancelled</span>
+          {% else %}<span class="badge">Draft</span>{% endif %}
+        </td>
+        <td>{{ receipt.line_count }}</td>
+        <td>{{ receipt.unit_count|default:0 }}</td>
+        <td>{{ receipt.created_by.get_full_name|default:receipt.created_by.username }}</td>
+        <td>{{ receipt.created_at|date:"Y-m-d H:i" }}</td>
+        <td style="padding-right:20px"><a class="button" href="{% url 'stock_receipt_detail' receipt.id %}">{% if receipt.status == "submitted" and can_apply %}Review{% else %}Open{% endif %}</a></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="8" style="padding:24px 20px;color:var(--muted)">No stock receipts match these filters.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+</div>
+{% endblock %}
