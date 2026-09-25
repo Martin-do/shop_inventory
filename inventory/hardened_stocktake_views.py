@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation
+from uuid import uuid4
 
 from django.db import transaction
 from django.http import JsonResponse
@@ -10,6 +11,14 @@ from .models import AuditLog, Category, Product, UserProfile
 from .stocktake_models import StocktakeCount, StocktakeZone
 from .stocktake_views import _can_access_zone, _event, stocktake_save_count as legacy_save_count
 from .views import role_required
+
+
+def _generate_internal_barcode():
+    """Return a unique internal stock code for products that have no physical barcode."""
+    while True:
+        code = f"MANUAL-{uuid4().hex[:12].upper()}"
+        if not Product.objects.filter(barcode=code).exists():
+            return code
 
 
 @role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
@@ -52,11 +61,13 @@ def stocktake_quick_product(request, zone_id):
     if not _can_access_zone(request.user, zone) or not zone.session.can_count or zone.is_complete:
         return JsonResponse({"error": "Not permitted."}, status=403)
 
-    barcode = request.POST.get("barcode", "").strip()
+    supplied_barcode = request.POST.get("barcode", "").strip()
     name = request.POST.get("name", "").strip()
-    if not barcode or not name:
-        return JsonResponse({"error": "Product name and barcode are required."}, status=400)
-    if Product.objects.filter(barcode=barcode).exists():
+    if not name:
+        return JsonResponse({"error": "Product name is required."}, status=400)
+
+    barcode = supplied_barcode or _generate_internal_barcode()
+    if supplied_barcode and Product.objects.filter(barcode=barcode).exists():
         return JsonResponse({"error": "That barcode already belongs to a product. Use the barcode lookup instead."}, status=409)
 
     try:
@@ -109,7 +120,11 @@ def stocktake_quick_product(request, zone_id):
         request.user,
         "product_created",
         f"{product.name} created during opening stocktake.",
-        {"product_id": product.pk, "barcode": barcode},
+        {
+            "product_id": product.pk,
+            "barcode": supplied_barcode,
+            "internal_code": barcode if not supplied_barcode else "",
+        },
     )
     _event(
         zone.session,
@@ -135,6 +150,8 @@ def stocktake_quick_product(request, zone_id):
         "product": product.name,
         "variant": product.variant,
         "barcode": barcode,
+        "barcode_display": supplied_barcode or "No barcode",
+        "has_barcode": bool(supplied_barcode),
         "category": category.name if category else "",
         "count_id": count.pk,
         "quantities": quantities,
