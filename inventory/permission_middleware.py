@@ -21,6 +21,13 @@ STOCKTAKE_ENTRY_PERMISSIONS = (
 
 POS_LOOKUP_ENDPOINTS = {"api_product_search", "api_active_catalog"}
 POS_LOOKUP_PERMISSIONS = ("access_pos", "view_products")
+RECEIPT_SHARED_ENDPOINTS = {
+    "receive_stock",
+    "stock_receipt_detail",
+    "stock_receipt_update_line",
+    "stock_receipt_delete_line",
+    "stock_receipt_cancel",
+}
 
 
 class GranularPermissionMiddleware:
@@ -35,6 +42,8 @@ class GranularPermissionMiddleware:
     def _has_required_access(self, user, url_name, codename):
         if url_name in {"stocktake_list", "stocktake_detail"}:
             return self._can_enter_stocktake(user)
+        if url_name in RECEIPT_SHARED_ENDPOINTS:
+            return has_access(user, "receive_stock") or has_access(user, "approve_stock_receipts")
         if url_name in POS_LOOKUP_ENDPOINTS:
             # The checkout screen cannot work without looking products up, so
             # anyone allowed to use the POS may read the catalogue it sells from.
@@ -48,6 +57,7 @@ class GranularPermissionMiddleware:
         for codename, route in (
             ("access_pos", "pos"),
             ("receive_stock", "receive_stock"),
+            ("approve_stock_receipts", "receive_stock"),
         ):
             if has_access(user, codename):
                 return route
