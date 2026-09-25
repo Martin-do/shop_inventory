@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import audit_views, granular_stocktake_views, security_views, staff_access_views, views
+from . import audit_views, granular_stocktake_views, receipt_views, security_views, staff_access_views, views
 from .hardened_sync import api_sync_offline
 
 
@@ -10,7 +10,15 @@ urlpatterns = [
     path("products/new/", views.product_create, name="product_create"),
     path("products/<int:pk>/edit/", security_views.product_update, name="product_update"),
     path("products/<int:pk>/toggle/", views.product_toggle_active, name="product_toggle_active"),
-    path("stock/receive/", views.receive_stock, name="receive_stock"),
+    path("products/<int:pk>/delete/", security_views.product_delete, name="product_delete"),
+    path("stock/receive/", receipt_views.receipt_list, name="receive_stock"),
+    path("stock/receipts/new/", receipt_views.receipt_create, name="stock_receipt_create"),
+    path("stock/receipts/<int:receipt_id>/", receipt_views.receipt_detail, name="stock_receipt_detail"),
+    path("stock/receipts/<int:receipt_id>/lines/add/", receipt_views.receipt_add_line, name="stock_receipt_add_line"),
+    path("stock/receipts/<int:receipt_id>/lines/<int:line_id>/remove/", receipt_views.receipt_remove_line, name="stock_receipt_remove_line"),
+    path("stock/receipts/<int:receipt_id>/submit/", receipt_views.receipt_submit, name="stock_receipt_submit"),
+    path("stock/receipts/<int:receipt_id>/lines/<int:line_id>/review/", receipt_views.receipt_review_line, name="stock_receipt_review_line"),
+    path("stock/receipts/<int:receipt_id>/apply/", receipt_views.receipt_apply, name="stock_receipt_apply"),
     path("stocktakes/", granular_stocktake_views.stocktake_list, name="stocktake_list"),
     path("stocktakes/new/", granular_stocktake_views.stocktake_create, name="stocktake_create"),
     path("stocktakes/<int:session_id>/", granular_stocktake_views.stocktake_detail, name="stocktake_detail"),
