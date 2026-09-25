@@ -8,7 +8,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from .access_control import has_access
+from .access_control import has_access, permission_required
 from .hardened_forms import AuditedProductForm
 from .models import Product, Sale, SaleItem, StockMovement, UserProfile
 from .stocktake_models import StocktakeSession
@@ -72,6 +72,49 @@ def product_update(request, pk):
             "title": f"Edit Product: {product.name}",
             "active_stocktake_count": active_stocktake_count,
         },
+    )
+
+
+@permission_required("delete_products")
+def product_delete(request, pk):
+    product = get_object_or_404(Product, pk=pk)
+
+    blockers = []
+    if product.is_active:
+        blockers.append("Deactivate this product before permanently deleting it.")
+    if product.stock_on_hand != 0:
+        blockers.append(f"Live stock is {product.stock_on_hand}; it must be zero before deletion.")
+    if product.movements.exists():
+        blockers.append("This product has stock movement history.")
+    if product.saleitem_set.exists():
+        blockers.append("This product appears on one or more sales.")
+    if product.stocktake_counts.exists():
+        blockers.append("This product appears in stocktake history.")
+    if product.receipt_lines.exists():
+        blockers.append("This product appears on a stock receipt.")
+
+    if request.method == "POST":
+        if blockers:
+            messages.error(
+                request,
+                "Product was not deleted. Historical inventory records are protected; deactivate it instead.",
+            )
+            return render(
+                request,
+                "inventory/product_delete_confirm.html",
+                {"product": product, "blockers": blockers},
+                status=409,
+            )
+
+        name = product.name
+        product.delete()
+        messages.success(request, f"Unused product '{name}' permanently deleted.")
+        return redirect("product_list")
+
+    return render(
+        request,
+        "inventory/product_delete_confirm.html",
+        {"product": product, "blockers": blockers},
     )
 
 
