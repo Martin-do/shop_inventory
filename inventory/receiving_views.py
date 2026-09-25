@@ -4,7 +4,7 @@ from uuid import uuid4
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -62,7 +62,7 @@ def receipt_list(request):
     receipts = (
         StockReceipt.objects
         .select_related("created_by", "submitted_by", "applied_by")
-        .prefetch_related("lines")
+        .annotate(line_count=Count("lines", distinct=True), unit_count=Sum("lines__quantity"))
     )
     query = request.GET.get("q", "").strip()
     status = request.GET.get("status", "").strip()
