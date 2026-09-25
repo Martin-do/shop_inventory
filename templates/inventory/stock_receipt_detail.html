@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Stock Receipt #{{ receipt.id }}{% endblock %}
+{% block content %}
+<style>
+.receipt-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,.65fr);gap:18px}
+.receipt-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}
+.receipt-summary>div{padding:12px;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--panel)}
+.receipt-summary span{display:block;color:var(--muted);font-size:12px}.receipt-summary strong{display:block;margin-top:3px}
+.receipt-line{display:grid;grid-template-columns:minmax(0,1fr) 120px minmax(160px,.65fr) auto;gap:10px;align-items:end;padding:13px 0;border-top:1px solid var(--line)}
+.receipt-line:first-child{border-top:0}
+.receipt-line form{display:contents}
+.pending-note{padding:12px 14px;border:1px solid var(--amber-line);background:var(--amber-tint);border-radius:var(--radius-md);margin:12px 0}
+.suggest-wrap{position:relative}.suggest-menu{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:40;background:var(--panel);border:1px solid var(--line-strong);border-radius:var(--radius-md);box-shadow:var(--shadow-card);max-height:260px;overflow:auto;padding:4px}.suggest-menu[hidden]{display:none}.suggest-option{display:block;width:100%;border:0;background:transparent;text-align:left;padding:10px 12px;border-radius:8px;color:inherit;cursor:pointer}.suggest-option:hover{background:var(--accent-tint)}.suggest-option strong,.suggest-option small{display:block}.suggest-option small{color:var(--muted);margin-top:2px}
+@media(max-width:850px){.receipt-grid{grid-template-columns:1fr}.receipt-summary{grid-template-columns:1fr 1fr}.receipt-line{grid-template-columns:1fr 100px}.receipt-line .line-note,.receipt-line .line-actions{grid-column:1/-1}}
+</style>
+
+<a href="{% url 'receive_stock' %}">← Stock receipts</a>
+<section class="heading" style="margin-top:10px">
+  <div>
+    <h1>{% if receipt.reference %}{{ receipt.reference }}{% else %}Receipt #{{ receipt.id }}{% endif %}</h1>
+    <p style="margin:4px 0 0;color:var(--muted)">{{ receipt.supplier|default:"Supplier not specified" }} · Created by {{ receipt.created_by.get_full_name|default:receipt.created_by.username }}</p>
+  </div>
+  <span class="badge {% if receipt.status == 'applied' %}badge-ok{% elif receipt.status == 'submitted' %}badge-low{% elif receipt.status == 'cancelled' %}badge-off{% endif %}">{{ receipt.get_status_display }}</span>
+</section>
+
+{% if receipt.status == "draft" or receipt.status == "submitted" %}
+<div class="pending-note"><strong>Pending stock only.</strong> None of the quantities on this receipt affect live stock until an authorised user approves and applies the receipt.</div>
+{% endif %}
+
+<div class="receipt-summary">
+  <div><span>Lines</span><strong>{{ lines|length }}</strong></div>
+  <div><span>Total units</span><strong>{{ receipt.total_units }}</strong></div>
+  <div><span>Status</span><strong>{{ receipt.get_status_display }}</strong></div>
+  <div><span>Reference</span><strong>{{ receipt.reference|default:"-" }}</strong></div>
+</div>
+
+<div class="receipt-grid">
+<section>
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><h2 style="margin:0">Delivery lines</h2><p style="margin:4px 0 0;color:var(--muted);font-size:13px">{% if can_edit %}Review and correct quantities before approval.{% else %}This receipt is read-only at its current stage.{% endif %}</p></div></div>
+
+    {% for line in lines %}
+    <div class="receipt-line">
+      {% if can_edit %}
+      <form method="post" action="{% url 'stock_receipt_update_line' receipt.id line.id %}">
+        {% csrf_token %}
+        <div>
+          <strong>{{ line.product.name }}</strong>{% if line.product.variant %} <span class="muted">({{ line.product.variant }})</span>{% endif %}
+          <small style="display:block;color:var(--muted)">{% if line.product.barcode|slice:":7" == "MANUAL-" %}No barcode{% else %}{{ line.product.barcode }}{% endif %} · Live {{ line.product.stock_on_hand }} → after approval {{ line.product.stock_on_hand|add:line.quantity }}</small>
+        </div>
+        <label style="font-size:12px">Quantity<input type="number" min="1" max="{{ max_receipt_quantity }}" name="quantity" value="{{ line.quantity }}" required></label>
+        <label class="line-note" style="font-size:12px">Line note<input name="note" maxlength="240" value="{{ line.note }}" placeholder="Optional"></label>
+        <div class="line-actions actions"><button class="button" type="submit">Save</button></div>
+      </form>
+      <form method="post" action="{% url 'stock_receipt_delete_line' receipt.id line.id %}" onsubmit="return confirm('Remove this product from the pending receipt?')">{% csrf_token %}<button class="button danger" type="submit">Remove</button></form>
+      {% else %}
+      <div>
+        <strong>{{ line.product.name }}</strong>{% if line.product.variant %} <span class="muted">({{ line.product.variant }})</span>{% endif %}
+        <small style="display:block;color:var(--muted)">{% if line.product.barcode|slice:":7" == "MANUAL-" %}No barcode{% else %}{{ line.product.barcode }}{% endif %}</small>
+      </div>
+      <strong>+{{ line.quantity }}</strong>
+      <div class="line-note">{{ line.note|default:"-" }}</div>
+      <div>Live {{ line.product.stock_on_hand }}</div>
+      {% endif %}
+    </div>
+    {% empty %}
+      <p style="padding:20px 0;color:var(--muted)">No products have been entered on this receipt yet.</p>
+    {% endfor %}
+  </div>
+
+  <div class="actions" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+    {% if can_submit %}
+      <form method="post" action="{% url 'stock_receipt_submit' receipt.id %}" onsubmit="return confirm('Submit this receipt for approval? You can no longer add products unless a reviewer changes it.')">{% csrf_token %}<button class="button primary" type="submit">Submit for Approval</button></form>
+    {% endif %}
+    {% if can_apply %}
+      <form method="post" action="{% url 'stock_receipt_apply' receipt.id %}" onsubmit="return confirm('Approve this receipt and add every listed quantity to live stock?')">{% csrf_token %}<button class="button primary" type="submit">Approve &amp; Add to Live Stock</button></form>
+    {% endif %}
+    {% if can_cancel %}
+      <form method="post" action="{% url 'stock_receipt_cancel' receipt.id %}" onsubmit="return confirm('Cancel this receipt? No pending stock will be applied.')">{% csrf_token %}<button class="button danger" type="submit">Cancel Receipt</button></form>
+    {% endif %}
+  </div>
+</section>
+
+<aside>
+{% if receipt.status == "draft" and can_edit %}
+<div class="panel">
+  <h2 style="margin-top:0">Add delivered product</h2>
+  <p style="color:var(--muted);font-size:13px">Scan a barcode or type a product name. Selecting a result links the existing catalogue product.</p>
+  <form method="post" action="{% url 'stock_receipt_add_line' receipt.id %}" id="receipt-line-form">
+    {% csrf_token %}
+    <input type="hidden" name="product_id" id="receipt-product-id">
+    <div class="suggest-wrap">
+      <label>Product or barcode<input id="receipt-product-search" autocomplete="off" placeholder="Start typing or scan barcode"></label>
+      <div class="suggest-menu" id="receipt-product-menu" hidden></div>
+    </div>
+    <div id="receipt-selected-product" class="product-banner" hidden></div>
+
+    {% if can_create_products %}
+    <button type="button" class="button" id="toggle-new-product" style="margin:8px 0">+ Register new product</button>
+    <div id="receipt-new-product" hidden>
+      <label>Barcode <span class="muted">(optional)</span><input name="barcode" id="receipt-new-barcode" autocomplete="off"></label>
+      <label>Product name<input name="name" id="receipt-new-name"></label>
+      <label>Variant / size<input name="variant"></label>
+      <label>Category<input name="category"></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <label>Selling price<input name="selling_price" type="number" min="0" step="0.01"></label>
+        {% if can_change_cost %}<label>Cost price<input name="cost_price" type="number" min="0" step="0.01"></label>{% endif %}
+      </div>
+      <label>Low-stock alert level<input name="reorder_level" type="number" min="0" value="5"></label>
+    </div>
+    {% endif %}
+
+    <label>Quantity received<input name="quantity" type="number" min="1" max="{{ max_receipt_quantity }}" required value="1"></label>
+    <label>Line note<input name="note" maxlength="240" placeholder="Optional batch/expiry/box note"></label>
+    <button class="button primary" type="submit" style="width:100%;margin-top:10px">Add to Pending Receipt</button>
+  </form>
+</div>
+{% elif receipt.status == "submitted" %}
+<div class="panel"><h3 style="margin-top:0">Awaiting approval</h3><p style="color:var(--muted)">A reviewer can correct quantities above before applying the receipt. Live stock is unchanged until then.</p></div>
+{% elif receipt.status == "applied" %}
+<div class="panel"><h3 style="margin-top:0">Receipt applied</h3><p style="color:var(--muted)">Applied by {{ receipt.applied_by.get_full_name|default:receipt.applied_by.username }} on {{ receipt.applied_at|date:"Y-m-d H:i" }}. The listed quantities are already included in live stock.</p></div>
+{% endif %}
+</aside>
+</div>
+
+{% if receipt.status == "draft" and can_edit %}
+<script>
+(() => {
+  const search=document.getElementById("receipt-product-search");
+  const productId=document.getElementById("receipt-product-id");
+  const menu=document.getElementById("receipt-product-menu");
+  const selected=document.getElementById("receipt-selected-product");
+  const toggle=document.getElementById("toggle-new-product");
+  const newFields=document.getElementById("receipt-new-product");
+  const newBarcode=document.getElementById("receipt-new-barcode");
+  const newName=document.getElementById("receipt-new-name");
+  const url="{% url 'stock_receipt_product_search' %}";
+  let timer=null,controller=null,current=[];
+
+  const hide=()=>{menu.hidden=true;menu.replaceChildren();};
+  const choose=(p)=>{
+    productId.value=p.id;
+    search.value=p.name+(p.variant?" — "+p.variant:"");
+    selected.textContent=p.name+(p.variant?" — "+p.variant:"")+" · "+(p.barcode_display||p.barcode)+" · Live stock "+p.stock;
+    selected.hidden=false;
+    if(newFields)newFields.hidden=true;
+    hide();
+  };
+  const render=(rows)=>{
+    current=rows;menu.replaceChildren();
+    if(!rows.length){hide();return;}
+    rows.forEach(p=>{
+      const b=document.createElement("button");b.type="button";b.className="suggest-option";
+      const strong=document.createElement("strong");strong.textContent=p.name+(p.variant?" — "+p.variant:"");
+      const small=document.createElement("small");small.textContent=[p.barcode_display||p.barcode,p.category,"Live "+p.stock].filter(Boolean).join(" · ");
+      b.append(strong,small);b.addEventListener("mousedown",e=>e.preventDefault());b.addEventListener("click",()=>choose(p));menu.appendChild(b);
+    });menu.hidden=false;
+  };
+
+  search.addEventListener("input",()=>{
+    productId.value="";selected.hidden=true;clearTimeout(timer);const q=search.value.trim();
+    if(!q){hide();return;}
+    timer=setTimeout(async()=>{
+      if(controller)controller.abort();controller=new AbortController();
+      try{const r=await fetch(url+"?q="+encodeURIComponent(q),{headers:{"X-Requested-With":"XMLHttpRequest"},signal:controller.signal});const data=await r.json();render(data.results||[]);}catch(e){if(e.name!=="AbortError")hide();}
+    },120);
+  });
+  search.addEventListener("keydown",e=>{
+    if(e.key!=="Enter")return;
+    e.preventDefault();
+    const raw=search.value.trim().toLowerCase();
+    const exact=current.find(p=>(p.barcode||"").toLowerCase()===raw||(p.name||"").toLowerCase()===raw);
+    if(exact){choose(exact);return;}
+    if(current.length===1){choose(current[0]);return;}
+    if(toggle&&newFields){newFields.hidden=false;if(newBarcode&&!newBarcode.value)newBarcode.value=search.value.trim();if(newName)newName.focus();}
+  });
+  if(toggle&&newFields)toggle.addEventListener("click",()=>{productId.value="";selected.hidden=true;newFields.hidden=!newFields.hidden;if(!newFields.hidden){if(newBarcode&&!newBarcode.value)newBarcode.value=search.value.trim();if(newName)newName.focus();}});
+  document.addEventListener("click",e=>{if(!menu.contains(e.target)&&e.target!==search)hide();});
+})();
+</script>
+{% endif %}
+{% endblock %}
