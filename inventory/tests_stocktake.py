@@ -134,26 +134,16 @@ class OpeningStocktakeTests(TestCase):
         count = StocktakeCount.objects.get(product=product, zone=self.zone)
         self.assertEqual(count.good_quantity, 11)
 
-    def test_count_page_suggests_previous_product_values(self):
+    def test_count_page_has_live_typeahead_controls(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
         self.session.save(update_fields=["status"])
-        category = Category.objects.create(name="Beverages")
-        Product.objects.create(
-            name="Milo",
-            barcode="55500011",
-            variant="500g",
-            category=category,
-            selling_price=Decimal("2500.00"),
-        )
         self.client.force_login(self.clerk)
         response = self.client.get(reverse("stocktake_count_zone", args=[self.zone.pk]))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'id="product-name-suggestions"')
-        self.assertContains(response, 'value="Milo"')
-        self.assertContains(response, 'id="variant-suggestions"')
-        self.assertContains(response, 'value="500g"')
-        self.assertContains(response, 'id="category-suggestions"')
-        self.assertContains(response, 'value="Beverages"')
+        self.assertContains(response, 'data-suggest-field="name"')
+        self.assertContains(response, 'data-suggest-field="variant"')
+        self.assertContains(response, 'data-suggest-field="category"')
+        self.assertContains(response, reverse("stocktake_product_search"))
 
     def test_mobile_count_page_contains_camera_scanner_and_manual_fallback(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
@@ -164,10 +154,6 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, "BarcodeDetector")
         self.assertContains(response, "Start Camera Scanner")
         self.assertContains(response, "Manual barcode entry", html=False)
-        self.assertContains(response, 'data-suggest-field="name"')
-        self.assertContains(response, 'data-suggest-field="variant"')
-        self.assertContains(response, 'data-suggest-field="category"')
-        self.assertContains(response, "stocktake_product_search")
 
     def test_stocktake_search_suggests_from_first_character(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
