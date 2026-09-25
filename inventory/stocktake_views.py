@@ -183,6 +183,8 @@ def stocktake_save_count(request, zone_id):
         "product": product.name,
         "variant": product.variant,
         "barcode": product.barcode,
+        "barcode_display": "No barcode" if product.barcode.startswith("MANUAL-") else product.barcode,
+        "category": product.category.name if product.category else "",
         "count_id": count.pk,
         "quantities": values,
     })
