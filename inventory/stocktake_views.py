@@ -16,6 +16,19 @@ from .stocktake_models import StocktakeCount, StocktakeEvent, StocktakeSession, 
 from .views import role_required
 
 
+MAX_STOCKTAKE_QUANTITY = 999_999
+
+
+def _parse_stocktake_quantities(request):
+    values = {}
+    for key in ("good_quantity", "damaged_quantity", "expired_quantity", "reserved_quantity"):
+        value = int(request.POST.get(key, 0) or 0)
+        if value < 0 or value > MAX_STOCKTAKE_QUANTITY:
+            raise ValueError
+        values[key] = value
+    return values
+
+
 def _event(session, actor, event, message, metadata=None):
     StocktakeEvent.objects.create(
         session=session,
@@ -167,12 +180,14 @@ def stocktake_save_count(request, zone_id):
         return JsonResponse({"unknown": True, "barcode": barcode}, status=404)
 
     try:
-        values = {
-            key: max(0, int(request.POST.get(key, 0) or 0))
-            for key in ("good_quantity", "damaged_quantity", "expired_quantity", "reserved_quantity")
-        }
+        values = _parse_stocktake_quantities(request)
     except (TypeError, ValueError):
-        return JsonResponse({"error": "Quantities must be whole numbers."}, status=400)
+        return JsonResponse({
+            "error": (
+                f"Quantities must be whole numbers from 0 to {MAX_STOCKTAKE_QUANTITY:,}. "
+                "Very large values are blocked because they are often scanned barcodes."
+            )
+        }, status=400)
 
     count, created = StocktakeCount.objects.update_or_create(
         session=zone.session,
@@ -278,9 +293,15 @@ def stocktake_review_count(request, count_id):
         count.save(update_fields=["status", "note"])
     else:
         try:
-            approved = max(0, int(request.POST.get("approved_good_quantity", count.good_quantity)))
-        except ValueError:
-            approved = count.good_quantity
+            approved = int(request.POST.get("approved_good_quantity", count.good_quantity))
+        except (TypeError, ValueError):
+            approved = -1
+        if approved < 0 or approved > MAX_STOCKTAKE_QUANTITY:
+            messages.error(
+                request,
+                f"Approved quantity must be between 0 and {MAX_STOCKTAKE_QUANTITY:,}.",
+            )
+            return redirect("stocktake_detail", session_id=count.session_id)
         count.approved_good_quantity = approved
         count.recount_quantity = approved if count.status == StocktakeCount.STATUS_RECOUNT else count.recount_quantity
         count.status = StocktakeCount.STATUS_APPROVED
