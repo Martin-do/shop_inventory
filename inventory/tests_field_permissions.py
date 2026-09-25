@@ -161,26 +161,37 @@ class ReceiveStockPermissionTests(TestCase):
         grant(self.user, "receive_stock")
         self.client.force_login(self.user)
 
-    def _receive_unknown(self):
-        return self.client.post(reverse("receive_stock"), {
-            "barcode": "7300", "quantity": 4, "name": "Unlisted", "selling_price": "30.00", "cost_price": "20.00",
+    def _new_receipt(self):
+        self.client.post(reverse("stock_receipt_create"), {"reference": "Permission test delivery"})
+        from .models import StockReceipt
+        return StockReceipt.objects.get()
+
+    def _receive_unknown(self, receipt):
+        return self.client.post(reverse("stock_receipt_add_line", args=[receipt.pk]), {
+            "barcode": "7300", "quantity": 4, "name": "Unlisted",
+            "selling_price": "30.00", "cost_price": "20.00",
         })
 
     def test_unknown_barcode_needs_permission_to_create_products(self):
-        self._receive_unknown()
+        receipt = self._new_receipt()
+        self._receive_unknown(receipt)
         self.assertFalse(Product.objects.filter(barcode="7300").exists())
         self.assertEqual(StockMovement.objects.count(), 0)
 
     def test_unknown_barcode_is_registered_when_allowed_and_cost_stays_blank(self):
         grant(self.user, "create_products")
-        self._receive_unknown()
+        receipt = self._new_receipt()
+        self._receive_unknown(receipt)
         product = Product.objects.get(barcode="7300")
-        self.assertEqual(product.stock_on_hand, 4)
+        self.assertEqual(product.stock_on_hand, 0)
         self.assertEqual(product.cost_price, Decimal("0.00"))
+        self.assertEqual(receipt.lines.get(product=product).quantity_received, 4)
 
     def test_cost_field_is_hidden_without_change_cost_permission(self):
-        form = self.client.get(reverse("receive_stock")).context["form"]
-        self.assertNotIn("cost_price", form.fields)
+        grant(self.user, "create_products")
+        receipt = self._new_receipt()
+        response = self.client.get(reverse("stock_receipt_detail", args=[receipt.pk]))
+        self.assertNotContains(response, 'name="cost_price"')
 
 
 class ExportAndDashboardVisibilityTests(TestCase):
