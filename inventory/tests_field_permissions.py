@@ -157,13 +157,24 @@ class ProductFieldPermissionTests(TestCase):
 
 class ReceiveStockPermissionTests(TestCase):
     def setUp(self):
+        from .models import StockReceipt
+
         self.user = User.objects.create_user("fp-receiver", password="pw-Receive-12345")
         grant(self.user, "receive_stock")
         self.client.force_login(self.user)
+        self.receipt = StockReceipt.objects.create(
+            supplier="Test supplier",
+            reference="FP-RECEIPT",
+            created_by=self.user,
+        )
 
     def _receive_unknown(self):
-        return self.client.post(reverse("receive_stock"), {
-            "barcode": "7300", "quantity": 4, "name": "Unlisted", "selling_price": "30.00", "cost_price": "20.00",
+        return self.client.post(reverse("stock_receipt_add_line", args=[self.receipt.pk]), {
+            "barcode": "7300",
+            "quantity": 4,
+            "name": "Unlisted",
+            "selling_price": "30.00",
+            "cost_price": "20.00",
         })
 
     def test_unknown_barcode_needs_permission_to_create_products(self):
@@ -173,14 +184,18 @@ class ReceiveStockPermissionTests(TestCase):
 
     def test_unknown_barcode_is_registered_when_allowed_and_cost_stays_blank(self):
         grant(self.user, "create_products")
+        self.client.force_login(self.user)
         self._receive_unknown()
         product = Product.objects.get(barcode="7300")
-        self.assertEqual(product.stock_on_hand, 4)
+        self.assertEqual(product.stock_on_hand, 0)
         self.assertEqual(product.cost_price, Decimal("0.00"))
+        self.assertEqual(self.receipt.lines.get(product=product).quantity, 4)
 
     def test_cost_field_is_hidden_without_change_cost_permission(self):
-        form = self.client.get(reverse("receive_stock")).context["form"]
-        self.assertNotIn("cost_price", form.fields)
+        grant(self.user, "create_products")
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("stock_receipt_detail", args=[self.receipt.pk]))
+        self.assertNotContains(response, 'name="cost_price"')
 
 
 class ExportAndDashboardVisibilityTests(TestCase):
