@@ -5,6 +5,14 @@
   <h1>{{ title }}</h1>
 </section>
 
+{% if active_stocktake_count %}
+<section class="panel" style="border-left:4px solid var(--warning, #b7791f);margin-bottom:16px;">
+  <strong>Active stocktake controls this product's quantity.</strong>
+  <p style="margin:6px 0 10px;color:var(--muted);">Product details can still be edited here, but Total Available Stock is locked to prevent it from drifting away from the pending count.</p>
+  <a class="button" href="{% url 'stocktake_detail' active_stocktake_count.session_id %}">Open {{ active_stocktake_count.session.name }}</a>
+</section>
+{% endif %}
+
 <form class="form panel" method="post" enctype="multipart/form-data">
   {% csrf_token %}
   {{ form.non_field_errors }}
