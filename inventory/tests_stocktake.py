@@ -154,6 +154,7 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, 'value="500g"')
         self.assertContains(response, 'id="category-suggestions"')
         self.assertContains(response, 'value="Beverages"')
+
     def test_mobile_count_page_contains_camera_scanner_and_manual_fallback(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
         self.session.save(update_fields=["status"])
