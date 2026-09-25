@@ -164,3 +164,29 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, "BarcodeDetector")
         self.assertContains(response, "Start Camera Scanner")
         self.assertContains(response, "Manual barcode entry", html=False)
+        self.assertContains(response, 'data-suggest-field="name"')
+        self.assertContains(response, 'data-suggest-field="variant"')
+        self.assertContains(response, 'data-suggest-field="category"')
+        self.assertContains(response, "stocktake_product_search")
+
+    def test_stocktake_search_suggests_from_first_character(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        category = Category.objects.create(name="Beverages")
+        Product.objects.create(
+            name="Milo",
+            barcode="55500011",
+            variant="500g",
+            category=category,
+            selling_price=Decimal("2500.00"),
+            cost_price=Decimal("2100.00"),
+        )
+        self.client.force_login(self.clerk)
+        response = self.client.get(reverse("stocktake_product_search"), {"q": "M"})
+        self.assertEqual(response.status_code, 200)
+        result = response.json()["results"][0]
+        self.assertEqual(result["name"], "Milo")
+        self.assertEqual(result["variant"], "500g")
+        self.assertEqual(result["category"], "Beverages")
+        self.assertEqual(result["selling_price"], "2500.00")
+        self.assertEqual(result["cost_price"], "2100.00")
