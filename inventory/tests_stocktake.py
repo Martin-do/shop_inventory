@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from .models import Product, StockMovement, UserProfile
+from .models import Category, Product, StockMovement, UserProfile
 from .stocktake_models import StocktakeCount, StocktakeSession, StocktakeZone
 
 
@@ -112,6 +112,48 @@ class OpeningStocktakeTests(TestCase):
         self.assertEqual(count.note, "Opening shelf count")
         self.assertEqual(product.stock_on_hand, 0)
 
+    def test_product_can_be_created_without_physical_barcode(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        self.client.force_login(self.clerk)
+        response = self.client.post(reverse("stocktake_quick_product", args=[self.zone.pk]), {
+            "barcode": "",
+            "name": "Loose Sugar",
+            "variant": "1kg",
+            "category": "Groceries",
+            "selling_price": "1800.00",
+            "cost_price": "1500.00",
+            "good_quantity": "11",
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        product = Product.objects.get(name="Loose Sugar")
+        self.assertTrue(product.barcode.startswith("MANUAL-"))
+        self.assertEqual(payload["barcode_display"], "No barcode")
+        self.assertFalse(payload["has_barcode"])
+        count = StocktakeCount.objects.get(product=product, zone=self.zone)
+        self.assertEqual(count.good_quantity, 11)
+
+    def test_count_page_suggests_previous_product_values(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        category = Category.objects.create(name="Beverages")
+        Product.objects.create(
+            name="Milo",
+            barcode="55500011",
+            variant="500g",
+            category=category,
+            selling_price=Decimal("2500.00"),
+        )
+        self.client.force_login(self.clerk)
+        response = self.client.get(reverse("stocktake_count_zone", args=[self.zone.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="product-name-suggestions"')
+        self.assertContains(response, 'value="Milo"')
+        self.assertContains(response, 'id="variant-suggestions"')
+        self.assertContains(response, 'value="500g"')
+        self.assertContains(response, 'id="category-suggestions"')
+        self.assertContains(response, 'value="Beverages"')
     def test_mobile_count_page_contains_camera_scanner_and_manual_fallback(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
         self.session.save(update_fields=["status"])
