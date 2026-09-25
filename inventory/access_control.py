@@ -23,11 +23,13 @@ PERMISSION_SECTIONS = {
         ("view_cost_price", "View cost prices"),
         ("change_cost_price", "Change cost prices"),
         ("toggle_products", "Activate or deactivate products"),
+        ("delete_products", "Permanently delete unused products"),
         ("manage_categories", "Manage categories"),
     ],
     "Inventory": [
         ("view_stock", "View stock quantities"),
-        ("receive_stock", "Receive stock"),
+        ("receive_stock", "Enter and submit stock receipts"),
+        ("approve_stock_receipts", "Approve and apply stock receipts"),
         ("adjust_stock", "Adjust stock balances"),
         ("view_stock_movements", "View stock movements"),
         ("export_stock", "Export stock records"),
@@ -93,7 +95,7 @@ PRESETS = {
     },
     "inventory_supervisor": {
         "label": "Inventory supervisor",
-        "permissions": {"view_products", "create_products", "edit_products", "change_selling_price", "view_cost_price", "change_cost_price", "view_stock", "receive_stock", "adjust_stock", "view_stock_movements", "manage_categories", "view_assigned_stocktakes", "count_assigned_zones", "create_products_during_stocktake", "complete_stocktake_zones", "view_all_stocktake_zones", "create_stocktakes", "assign_stocktake_teams", "start_stocktakes", "review_stocktake_counts"},
+        "permissions": {"view_products", "create_products", "edit_products", "change_selling_price", "view_cost_price", "change_cost_price", "view_stock", "receive_stock", "approve_stock_receipts", "adjust_stock", "view_stock_movements", "manage_categories", "view_assigned_stocktakes", "count_assigned_zones", "create_products_during_stocktake", "complete_stocktake_zones", "view_all_stocktake_zones", "create_stocktakes", "assign_stocktake_teams", "start_stocktakes", "review_stocktake_counts"},
     },
     "manager": {"label": "Manager", "permissions": set(ALL_CODENAMES) - {"assign_permissions"}},
     "owner": {"label": "Owner / system administrator", "permissions": set(ALL_CODENAMES)},
@@ -120,14 +122,18 @@ LEGACY_ROLE_PERMISSIONS = {
 
 SENSITIVE_PERMISSIONS = {
     "reverse_sale", "adjust_stock", "change_selling_price", "change_cost_price",
-    "view_profit_information", "apply_stocktakes", "assign_permissions", "view_audit_history",
+    "delete_products", "approve_stock_receipts", "view_profit_information",
+    "apply_stocktakes", "assign_permissions", "view_audit_history",
 }
 
 URL_PERMISSION_MAP = {
     "dashboard": "view_sales_reports",
     "pos": "access_pos", "pos_add": "create_sale", "pos_remove": "create_sale", "pos_clear": "create_sale", "pos_checkout": "create_sale",
-    "product_list": "view_products", "product_create": "create_products", "product_update": "edit_products", "product_toggle_active": "toggle_products",
-    "receive_stock": "receive_stock",
+    "product_list": "view_products", "product_create": "create_products", "product_update": "edit_products", "product_toggle_active": "toggle_products", "product_delete": "delete_products",
+    "receive_stock": "receive_stock", "stock_receipt_create": "receive_stock", "stock_receipt_detail": "receive_stock",
+    "stock_receipt_add_line": "receive_stock", "stock_receipt_update_line": "receive_stock", "stock_receipt_delete_line": "receive_stock",
+    "stock_receipt_submit": "receive_stock", "stock_receipt_cancel": "receive_stock",
+    "stock_receipt_apply": "approve_stock_receipts", "stock_receipt_product_search": "receive_stock",
     "stocktake_list": "view_assigned_stocktakes", "stocktake_detail": "view_assigned_stocktakes", "stocktake_create": "create_stocktakes",
     "stocktake_assign_zone": "assign_stocktake_teams", "stocktake_start": "start_stocktakes", "stocktake_count_zone": "count_assigned_zones",
     "stocktake_save_count": "count_assigned_zones", "stocktake_edit_record": "count_assigned_zones", "stocktake_quick_product": "create_products_during_stocktake", "stocktake_complete_zone": "complete_stocktake_zones",
