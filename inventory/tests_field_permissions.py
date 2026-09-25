@@ -8,6 +8,7 @@ from django.urls import reverse
 
 from .access_control import PRESETS, has_access
 from .models import Product, StockMovement, UserProfile
+from .stocktake_models import StocktakeCount, StocktakeSession, StocktakeZone
 from .permission_forms import StaffAccessForm
 from .tests import grant, make_product
 
@@ -110,6 +111,39 @@ class ProductFieldPermissionTests(TestCase):
         self.assertEqual(self.product.stock_on_hand, 12)
         movement = StockMovement.objects.filter(movement_type=StockMovement.ADJUSTMENT).latest("id")
         self.assertEqual(movement.actor, self.user)
+
+    def test_active_stocktake_locks_product_page_total_stock_but_keeps_metadata_editable(self):
+        grant(self.user, "adjust_stock")
+        session = StocktakeSession.objects.create(
+            name="Live Count",
+            created_by=self.user,
+            status=StocktakeSession.STATUS_COUNTING,
+        )
+        zone = StocktakeZone.objects.create(session=session, name="Shelf")
+        StocktakeCount.objects.create(
+            session=session,
+            zone=zone,
+            product=self.product,
+            good_quantity=13,
+            approved_good_quantity=13,
+            counted_by=self.user,
+        )
+
+        form = self.client.get(self.url).context["form"]
+        self.assertTrue(form.fields["total_stock"].disabled)
+        response = self._post(
+            name="Still editable",
+            total_stock=99,
+            adjustment_note="Trying product-page stock correction",
+        )
+        self.assertEqual(response.status_code, 302)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.name, "Still editable")
+        self.assertEqual(self.product.stock_on_hand, 10)
+        self.assertEqual(
+            StockMovement.objects.filter(product=self.product, movement_type=StockMovement.ADJUSTMENT).count(),
+            0,
+        )
 
     def test_new_product_cost_is_ignored_without_change_cost_permission(self):
         grant(self.user, "create_products")

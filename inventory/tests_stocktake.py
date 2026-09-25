@@ -285,6 +285,109 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, "Search Item 34")
         self.assertEqual(len(response.context["recent"]), 35)
 
+    def test_full_record_edit_updates_product_and_count_without_touching_live_stock(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.started_at = self.session.created_at
+        self.session.save(update_fields=["status", "started_at"])
+        category = Category.objects.create(name="Old Category")
+        self.product.category = category
+        self.product.cost_price = Decimal("700.00")
+        self.product.save()
+        count = StocktakeCount.objects.create(
+            session=self.session,
+            zone=self.zone,
+            product=self.product,
+            good_quantity=5,
+            approved_good_quantity=5,
+            counted_by=self.clerk,
+        )
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse("stocktake_edit_record", args=[count.pk]), {
+            "name": "Fresh Milk",
+            "barcode": "12345671",
+            "variant": "500ml",
+            "category": "Dairy",
+            "selling_price": "1250.00",
+            "cost_price": "900.00",
+            "reorder_level": "8",
+            "good_quantity": "14",
+            "damaged_quantity": "2",
+            "expired_quantity": "1",
+            "reserved_quantity": "3",
+            "note": "Corrected full record",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.product.refresh_from_db()
+        count.refresh_from_db()
+        self.assertEqual(self.product.name, "Fresh Milk")
+        self.assertEqual(self.product.barcode, "12345671")
+        self.assertEqual(self.product.variant, "500ml")
+        self.assertEqual(self.product.category.name, "Dairy")
+        self.assertEqual(self.product.selling_price, Decimal("1250.00"))
+        self.assertEqual(self.product.cost_price, Decimal("900.00"))
+        self.assertEqual(self.product.reorder_level, 8)
+        self.assertEqual(count.good_quantity, 14)
+        self.assertEqual(count.damaged_quantity, 2)
+        self.assertEqual(count.expired_quantity, 1)
+        self.assertEqual(count.reserved_quantity, 3)
+        self.assertEqual(count.note, "Corrected full record")
+        self.assertEqual(self.product.stock_on_hand, 0)
+
+    def test_full_record_edit_rejects_duplicate_barcode(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        Product.objects.create(name="Other", barcode="DUPLICATE", selling_price=Decimal("10.00"))
+        count = StocktakeCount.objects.create(
+            session=self.session,
+            zone=self.zone,
+            product=self.product,
+            good_quantity=5,
+            approved_good_quantity=5,
+            counted_by=self.clerk,
+        )
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse("stocktake_edit_record", args=[count.pk]), {
+            "name": self.product.name,
+            "barcode": "DUPLICATE",
+            "selling_price": "1000.00",
+            "cost_price": "0.00",
+            "reorder_level": "5",
+            "good_quantity": "5",
+        })
+        self.assertEqual(response.status_code, 409)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.barcode, "12345670")
+
+    def test_lookup_flags_manual_product_page_adjustment_during_stocktake(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        count = StocktakeCount.objects.create(
+            session=self.session,
+            zone=self.zone,
+            product=self.product,
+            good_quantity=12,
+            approved_good_quantity=12,
+            counted_by=self.clerk,
+        )
+        StockMovement.objects.create(
+            product=self.product,
+            movement_type=StockMovement.ADJUSTMENT,
+            quantity=9,
+            note="Manual adjustment: 0 → 9 (corrected from Products page)",
+            actor=self.admin,
+        )
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": self.product.barcode,
+            "lookup_only": "1",
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["existing_count"]["id"], count.pk)
+        self.assertEqual(payload["live_stock"], 9)
+        self.assertIsNotNone(payload["manual_adjustment_during_stocktake"])
+        self.assertIn("Manual adjustment:", payload["manual_adjustment_during_stocktake"]["note"])
+
     def test_stocktake_search_suggests_from_first_character(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
         self.session.save(update_fields=["status"])

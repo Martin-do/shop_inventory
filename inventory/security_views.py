@@ -11,6 +11,7 @@ from django.views.decorators.http import require_POST
 from .access_control import has_access
 from .hardened_forms import AuditedProductForm
 from .models import Product, Sale, SaleItem, StockMovement, UserProfile
+from .stocktake_models import StocktakeSession
 from .views import api_active_catalog as legacy_active_catalog
 from .views import api_product_search as legacy_product_search
 from .views import role_required
@@ -29,8 +30,26 @@ def api_active_catalog(request):
 @role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
 def product_update(request, pk):
     product = get_object_or_404(Product, pk=pk)
+    active_stocktake_count = (
+        product.stocktake_counts.select_related("session", "zone")
+        .filter(
+            session__status__in=[
+                StocktakeSession.STATUS_DRAFT,
+                StocktakeSession.STATUS_COUNTING,
+                StocktakeSession.STATUS_REVIEW,
+            ]
+        )
+        .order_by("-session__created_at", "zone__name")
+        .first()
+    )
     before_stock = product.stock_on_hand
     form = AuditedProductForm(request.POST or None, request.FILES or None, instance=product, user=request.user)
+    if active_stocktake_count and "total_stock" in form.fields:
+        form.fields["total_stock"].disabled = True
+        form.fields["total_stock"].help_text = (
+            "Quantity is controlled by the active stocktake. Edit the counted quantity "
+            "inside the stocktake so the pending count and live stock do not diverge."
+        )
     if request.method == "POST" and form.is_valid():
         product = form.save()
         after_stock = product.stock_on_hand
@@ -45,7 +64,15 @@ def product_update(request, pk):
                 movement.save(update_fields=["note"])
         messages.success(request, f"Product '{product.name}' updated.")
         return redirect("product_list")
-    return render(request, "inventory/product_form.html", {"form": form, "title": f"Edit Product: {product.name}"})
+    return render(
+        request,
+        "inventory/product_form.html",
+        {
+            "form": form,
+            "title": f"Edit Product: {product.name}",
+            "active_stocktake_count": active_stocktake_count,
+        },
+    )
 
 
 @role_required([UserProfile.ROLE_ADMIN])
