@@ -98,9 +98,11 @@
 <form id="full-edit-form">{% csrf_token %}<input type="hidden" name="count_id">
 <div id="stocktake-reconcile-note" class="reconcile-note" hidden><strong>Stock was manually changed from the Products page during this stocktake.</strong><p id="stocktake-reconcile-text" class="form-note" style="margin-top:5px"></p><button type="button" class="button" id="use-live-stock">Use current live stock as counted quantity</button></div>
 <div class="live-stock-line"><span>Current live stock</span><strong id="full-live-stock">0</strong></div>
-<label>Product name</label><input name="name" required>
+<label>Product name</label>
+<div class="suggest-wrap"><input name="name" data-suggest-field="name" data-suggest-autofill="full-edit" required autocomplete="off"><div class="suggest-menu" data-suggest-menu="name" hidden></div></div>
+<p class="form-note">Choose a suggested product name to fill its saved variant, category, prices and low-stock level automatically. The current barcode is left unchanged so one catalogue product cannot accidentally overwrite another.</p>
 <label>Barcode <span class="muted">(optional)</span></label><input name="barcode" placeholder="Leave blank for no physical barcode">
-<div class="details-grid"><div><label>Variant / size</label><input name="variant"></div><div><label>Category</label><input name="category"></div></div>
+<div class="details-grid"><div><label>Variant / size</label><div class="suggest-wrap"><input name="variant" data-suggest-field="variant" autocomplete="off"><div class="suggest-menu" data-suggest-menu="variant" hidden></div></div></div><div><label>Category</label><div class="suggest-wrap"><input name="category" data-suggest-field="category" autocomplete="off"><div class="suggest-menu" data-suggest-menu="category" hidden></div></div></div></div>
 <div class="details-grid"><div><label>Selling price</label><input name="selling_price" type="number" min="0" step="0.01"></div><div id="full-cost-field"><label>Cost price</label><input name="cost_price" type="number" min="0" step="0.01"></div></div>
 <label>Low-stock alert level</label><input name="reorder_level" type="number" min="0">
 <div class="stock-entry-box"><h4>Stocktake quantities</h4><div class="qty-grid"><div><label>Available / sellable</label><input name="good_quantity" type="number" min="0" required></div><div><label>Damaged</label><input name="damaged_quantity" type="number" min="0"></div><div><label>Expired</label><input name="expired_quantity" type="number" min="0"></div><div><label>Reserved</label><input name="reserved_quantity" type="number" min="0"></div></div><label>Stock note</label><input name="note" maxlength="240"></div>
@@ -118,8 +120,23 @@
  const suggestionUrl='{% url "stocktake_product_search" %}';
  const editRecordUrlTemplate='{% url "stocktake_edit_record" 0 %}';
  const fullEditCard=document.getElementById('full-edit-card'), fullEditForm=document.getElementById('full-edit-form');
+ function autofillSuggestedProduct(input, product){
+   if(input.dataset.suggestAutofill!=='full-edit')return;
+   const target=input.closest('form');
+   if(!target)return;
+   const fill=(name,value)=>{
+     const field=target.querySelector('[name="'+name+'"]');
+     if(field&&!field.disabled&&value!==undefined&&value!==null)field.value=value;
+   };
+   fill('variant',product.variant||'');
+   fill('category',product.category||'');
+   fill('selling_price',product.selling_price||0);
+   if(Object.prototype.hasOwnProperty.call(product,'cost_price'))fill('cost_price',product.cost_price);
+   fill('reorder_level',product.reorder_level??0);
+   toast('Saved product details filled in. Review and edit anything that needs changing.','success');
+ }
  function bindSuggestions(input){
-   const field=input.dataset.suggestField, menu=document.querySelector('[data-suggest-menu="'+field+'"]');
+   const field=input.dataset.suggestField, wrap=input.closest('.suggest-wrap'), menu=wrap?wrap.querySelector('[data-suggest-menu]'):null;
    if(!menu)return;
    let timer=null, controller=null;
    const hide=()=>{menu.hidden=true;menu.replaceChildren();};
@@ -131,7 +148,7 @@
        const strong=document.createElement('strong');strong.textContent=item.value;button.appendChild(strong);
        if(item.meta){const small=document.createElement('small');small.textContent=item.meta;button.appendChild(small);}
        button.addEventListener('mousedown',e=>e.preventDefault());
-       button.addEventListener('click',()=>{input.value=item.value;hide();input.focus();});
+       button.addEventListener('click',()=>{input.value=item.value;autofillSuggestedProduct(input,item.product);hide();input.focus();});
        menu.appendChild(button);
      });
      menu.hidden=false;
@@ -161,7 +178,7 @@
            }
            const key=value.trim().toLowerCase();
            if(!key||seen.has(key)||!key.includes(q.toLowerCase()))continue;
-           seen.add(key);items.push({value:value,meta:meta});
+           seen.add(key);items.push({value:value,meta:meta,product:product});
          }
          render(items);
        }catch(err){if(err.name!=='AbortError')hide();}

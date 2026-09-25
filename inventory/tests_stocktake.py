@@ -143,6 +143,9 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, 'data-suggest-field="name"')
         self.assertContains(response, 'data-suggest-field="variant"')
         self.assertContains(response, 'data-suggest-field="category"')
+        self.assertContains(response, 'data-suggest-autofill="full-edit"')
+        self.assertContains(response, "autofillSuggestedProduct")
+        self.assertContains(response, "Saved product details filled in")
         self.assertContains(response, reverse("stocktake_product_search"))
 
     def test_mobile_count_page_contains_camera_scanner_and_manual_fallback(self):
@@ -409,3 +412,5 @@ class OpeningStocktakeTests(TestCase):
         self.assertEqual(result["category"], "Beverages")
         self.assertEqual(result["selling_price"], "2500.00")
         self.assertEqual(result["cost_price"], "2100.00")
+        self.assertEqual(result["reorder_level"], 5)
+        self.assertEqual(result["barcode_display"], "55500011")
