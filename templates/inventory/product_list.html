@@ -37,6 +37,7 @@
               {% csrf_token %}
               <button class="button">{% if product.is_active %}Deactivate{% else %}Activate{% endif %}</button>
             </form>
+            {% if perms.inventory.delete_products %}<a class="button danger" href="{% url 'product_delete' product.pk %}">Delete</a>{% endif %}
           </td>
         </tr>
       {% empty %}
