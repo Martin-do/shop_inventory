@@ -9,14 +9,15 @@
   <a class="button" href="{% url 'audit_export_csv' %}">Export CSV</a>
 </section>
 
-<form method="get" class="panel form" style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr auto; gap:10px; align-items:end; margin-bottom:16px;">
-  <label>Search<input name="q" value="{{ query }}" placeholder="Staff, object, ID, action or page"></label>
+<form method="get" class="panel form" data-live-search data-live-target="#audit-search-results" style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr auto; gap:10px; align-items:end; margin-bottom:16px;">
+  <label>Search<input name="q" value="{{ query }}" placeholder="Staff, object, ID, action or page" autocomplete="off"></label>
   <label>Action<select name="action"><option value="">All actions</option>{% for value, label in actions %}<option value="{{ value }}" {% if selected_action == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
   <label>Staff<input name="actor" value="{{ selected_actor }}" placeholder="Name or username"></label>
   <label>Object<select name="object_type"><option value="">All objects</option>{% for value in object_types %}<option value="{{ value }}" {% if selected_object_type == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
   <button class="button primary" type="submit">Filter</button>
 </form>
 
+<div id="audit-search-results" aria-live="polite">
 <section class="panel" style="overflow-x:auto;">
   <table class="cart">
     <thead><tr><th>When</th><th>Staff</th><th>Action</th><th>Object</th><th>Summary</th><th>Request</th><th></th></tr></thead>
@@ -45,4 +46,5 @@
   {% if page_obj.has_next %}<a class="button" href="?page={{ page_obj.next_page_number }}&q={{ query|urlencode }}&action={{ selected_action|urlencode }}&actor={{ selected_actor|urlencode }}&object_type={{ selected_object_type|urlencode }}">Next</a>{% endif %}
 </nav>
 {% endif %}
+</div>
 {% endblock %}

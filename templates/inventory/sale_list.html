@@ -9,12 +9,13 @@
   </div>
 </section>
 
-<form method="get" class="panel" style="display:grid; grid-template-columns:2fr 1fr auto; gap:10px; align-items:end; margin-bottom:16px;">
-  <label style="font-size: 13px;">Search<input name="q" value="{{ query }}" placeholder="Receipt number, cashier or customer"></label>
+<form method="get" class="panel" data-live-search data-live-target="#sale-search-results" style="display:grid; grid-template-columns:2fr 1fr auto; gap:10px; align-items:end; margin-bottom:16px;">
+  <label style="font-size: 13px;">Search<input name="q" value="{{ query }}" placeholder="Receipt number, cashier or customer" autocomplete="off"></label>
   <label style="font-size: 13px;">Status<select name="status"><option value="">All</option>{% for value, label in status_choices %}<option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
   <button class="button primary" type="submit">Filter</button>
 </form>
 
+<div id="sale-search-results" aria-live="polite">
 <section class="panel" style="overflow-x:auto; padding: 0;">
   <table>
     <thead><tr><th style="padding-left: 20px;">Receipt</th><th>Date</th><th>Cashier</th><th>Customer</th><th>Total</th><th>Status</th><th style="padding-right: 20px;"></th></tr></thead>
@@ -43,4 +44,5 @@
   {% if page_obj.has_next %}<a class="button" href="?page={{ page_obj.next_page_number }}&q={{ query }}&status={{ selected_status }}">Next</a>{% endif %}
 </nav>
 {% endif %}
+</div>
 {% endblock %}

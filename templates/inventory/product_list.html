@@ -7,12 +7,12 @@
   <a class="button primary" href="{% url 'product_create' %}">Add Product</a>
 </section>
 
-<form class="search" method="get">
-  <input name="q" value="{{ query }}" placeholder="Search name or barcode">
+<form class="search" method="get" data-live-search data-live-target="#product-search-results">
+  <input name="q" value="{{ query }}" placeholder="Search name or barcode" autocomplete="off">
   <button>Search</button>
 </form>
 
-<section class="panel" style="padding: 0; overflow-x: auto;">
+<section id="product-search-results" class="panel" style="padding: 0; overflow-x: auto;" aria-live="polite">
   <table>
     <thead><tr><th style="padding-left: 20px;">Image</th><th>Name</th><th>Barcode</th><th>Price</th>{% if perms.inventory.view_stock %}<th>Stock</th>{% endif %}<th>Reorder</th><th>Status</th><th style="padding-right: 20px;">Actions</th></tr></thead>
     <tbody>
