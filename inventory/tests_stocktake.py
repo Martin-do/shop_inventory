@@ -92,11 +92,25 @@ class OpeningStocktakeTests(TestCase):
             "category": "Toiletries",
             "selling_price": "750.00",
             "cost_price": "600.00",
+            "reorder_level": "4",
+            "good_quantity": "18",
+            "damaged_quantity": "2",
+            "expired_quantity": "1",
+            "reserved_quantity": "3",
+            "note": "Opening shelf count",
         })
         self.assertEqual(response.status_code, 200)
         product = Product.objects.get(barcode="99887766")
         self.assertEqual(product.name, "New Soap")
         self.assertEqual(product.category.name, "Toiletries")
+        self.assertEqual(product.reorder_level, 4)
+        count = StocktakeCount.objects.get(product=product, zone=self.zone)
+        self.assertEqual(count.good_quantity, 18)
+        self.assertEqual(count.damaged_quantity, 2)
+        self.assertEqual(count.expired_quantity, 1)
+        self.assertEqual(count.reserved_quantity, 3)
+        self.assertEqual(count.note, "Opening shelf count")
+        self.assertEqual(product.stock_on_hand, 0)
 
     def test_mobile_count_page_contains_camera_scanner_and_manual_fallback(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
