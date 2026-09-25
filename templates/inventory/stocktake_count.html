@@ -20,6 +20,10 @@
 .count-search input{width:100%;height:42px}
 #recent-list{max-height:520px;overflow:auto;padding-right:2px}
 .count-search-empty{padding:16px 0;color:var(--muted);font-size:13px}
+.full-edit-card{border:1.5px solid var(--line-strong);margin-bottom:14px}
+.full-edit-card[hidden]{display:none}
+.reconcile-note{padding:12px;border-radius:var(--radius-md);background:var(--amber-tint);border:1px solid var(--amber-line);margin:10px 0}
+.live-stock-line{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 12px;border-radius:var(--radius-md);background:var(--panel);border:1px solid var(--line);margin:10px 0}
 .lookup-row{display:grid;grid-template-columns:1fr auto;gap:8px}
 .lookup-row input{height:50px;font-size:17px;font-weight:600;font-family:var(--font-display)}
 .product-banner{background:var(--accent-tint);border:1px solid #cde4dc;border-radius:var(--radius-md);padding:14px 16px;margin:10px 0;font-weight:600}
@@ -89,6 +93,20 @@
 <button class="button primary" style="width:100%;margin-top:10px">Create product &amp; save opening stock</button>
 </form>
 </div>
+<div class="card full-edit-card" id="full-edit-card" hidden>
+<div style="display:flex;justify-content:space-between;gap:10px;align-items:start"><div><h3 style="margin:0">Edit full stocktake record</h3><p class="form-note">Update the product details and this stocktake count together.</p></div><button type="button" class="link-button" id="close-full-edit" aria-label="Close">×</button></div>
+<form id="full-edit-form">{% csrf_token %}<input type="hidden" name="count_id">
+<div id="stocktake-reconcile-note" class="reconcile-note" hidden><strong>Stock was manually changed from the Products page during this stocktake.</strong><p id="stocktake-reconcile-text" class="form-note" style="margin-top:5px"></p><button type="button" class="button" id="use-live-stock">Use current live stock as counted quantity</button></div>
+<div class="live-stock-line"><span>Current live stock</span><strong id="full-live-stock">0</strong></div>
+<label>Product name</label><input name="name" required>
+<label>Barcode <span class="muted">(optional)</span></label><input name="barcode" placeholder="Leave blank for no physical barcode">
+<div class="details-grid"><div><label>Variant / size</label><input name="variant"></div><div><label>Category</label><input name="category"></div></div>
+<div class="details-grid"><div><label>Selling price</label><input name="selling_price" type="number" min="0" step="0.01"></div><div id="full-cost-field"><label>Cost price</label><input name="cost_price" type="number" min="0" step="0.01"></div></div>
+<label>Low-stock alert level</label><input name="reorder_level" type="number" min="0">
+<div class="stock-entry-box"><h4>Stocktake quantities</h4><div class="qty-grid"><div><label>Available / sellable</label><input name="good_quantity" type="number" min="0" required></div><div><label>Damaged</label><input name="damaged_quantity" type="number" min="0"></div><div><label>Expired</label><input name="expired_quantity" type="number" min="0"></div><div><label>Reserved</label><input name="reserved_quantity" type="number" min="0"></div></div><label>Stock note</label><input name="note" maxlength="240"></div>
+<button class="button primary" style="width:100%;margin-top:10px">Save full record</button>
+</form>
+</div>
 <div class="card"><h3 style="font-size:15px">Counted products</h3><p class="form-note">Search by product name, barcode, variant or category. Use Edit to reload a saved count, correct it, and save again.</p><div class="count-search"><input id="count-search" type="search" placeholder="Search counted products..." autocomplete="off"></div><div id="recent-list">{% for row in recent %}<div class="recent-row" data-recent-barcode="{{ row.product.barcode }}" data-search="{{ row.product.name|lower }} {{ row.product.barcode|lower }} {{ row.product.variant|lower }} {% if row.product.category %}{{ row.product.category.name|lower }}{% endif %}"><span class="recent-main"><strong>{{ row.product.name }}</strong>{% if row.product.variant %} <span class="muted">({{ row.product.variant }})</span>{% endif %}<br><small>{% if row.product.barcode|slice:":7" == "MANUAL-" %}No barcode{% else %}{{ row.product.barcode }}{% endif %}{% if row.product.category %} · {{ row.product.category.name }}{% endif %} · {{ row.counted_by.username }}</small></span><span class="recent-actions"><strong class="recent-qty">{{ row.good_quantity }}</strong><button type="button" class="button edit-count" data-barcode="{{ row.product.barcode }}">Edit</button></span></div>{% empty %}<p class="muted">No items counted yet.</p>{% endfor %}</div><p id="count-search-empty" class="count-search-empty" hidden>No counted product matches your search.</p></div>
 <form method="post" action="{% url 'stocktake_complete_zone' zone.id %}" style="margin-top:12px">{% csrf_token %}<button class="button" style="width:100%;min-height:48px">Finish this zone</button></form>
 </aside></div>
@@ -98,6 +116,8 @@
  const csrf=form.querySelector('[name=csrfmiddlewaretoken]').value; let stream=null, detector=null, scanning=false, scanLock=false, lastCode='', lastAt=0, productReady=false;
  const toast=(m,t='info')=>window.shopToast?window.shopToast(m,t):console.log(m);
  const suggestionUrl='{% url "stocktake_product_search" %}';
+ const editRecordUrlTemplate='{% url "stocktake_edit_record" 0 %}';
+ const fullEditCard=document.getElementById('full-edit-card'), fullEditForm=document.getElementById('full-edit-form');
  function bindSuggestions(input){
    const field=input.dataset.suggestField, menu=document.querySelector('[data-suggest-menu="'+field+'"]');
    if(!menu)return;
@@ -179,8 +199,49 @@
  }
  async function saveCount(){if(!productReady){const found=await lookupProduct();if(!found)return;}const updating=document.getElementById('save-count').textContent==='Update count';const data=new FormData(form);const r=await fetch('{% url "stocktake_save_count" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:data});const j=await r.json();if(r.status===404&&j.unknown){showProductForm(j.barcode);return;}if(!r.ok){toast(j.error||'Could not save count','error');return;}toast((updating?'Count updated for ':'Count saved for ')+j.product,'success');addRecentRow(j);setCountFields(null);barcode.value='';result.textContent='';result.className='';productReady=false;barcode.focus();}
  form.addEventListener('submit',e=>{e.preventDefault();saveCount().catch(()=>toast('Network error while saving','error'));});document.getElementById('lookup').onclick=()=>lookupProduct();barcode.addEventListener('input',()=>{productReady=false;result.textContent='';result.className='';document.getElementById('save-count').textContent='Save count';});barcode.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();lookupProduct();}});
- document.getElementById('recent-list').addEventListener('click',e=>{const button=e.target.closest('.edit-count');if(!button)return;barcode.value=button.dataset.barcode;productReady=false;lookupProduct().then(found=>{if(found)form.scrollIntoView({behavior:'smooth',block:'start'});});});
+ async function openFullEditor(code){
+   const data=new FormData();data.append('barcode',code);data.append('lookup_only','1');data.append('csrfmiddlewaretoken',csrf);
+   const r=await fetch('{% url "stocktake_save_count" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:data});const j=await r.json();
+   if(!r.ok||!j.existing_count){toast(j.error||'This product does not have a saved count in this zone.','error');return;}
+   const count=j.existing_count, perms=j.permissions||{};
+   fullEditForm.dataset.originalBarcode=j.barcode;fullEditForm.querySelector('[name=count_id]').value=count.id;
+   fullEditForm.querySelector('[name=name]').value=j.product||'';
+   fullEditForm.querySelector('[name=barcode]').value=j.has_barcode?j.barcode:'';
+   fullEditForm.querySelector('[name=variant]').value=j.variant||'';
+   fullEditForm.querySelector('[name=category]').value=j.category||'';
+   fullEditForm.querySelector('[name=selling_price]').value=j.selling_price||0;
+   fullEditForm.querySelector('[name=cost_price]').value=j.cost_price||0;
+   fullEditForm.querySelector('[name=reorder_level]').value=j.reorder_level??0;
+   fullEditForm.querySelector('[name=good_quantity]').value=count.good_quantity;
+   fullEditForm.querySelector('[name=damaged_quantity]').value=count.damaged_quantity;
+   fullEditForm.querySelector('[name=expired_quantity]').value=count.expired_quantity;
+   fullEditForm.querySelector('[name=reserved_quantity]').value=count.reserved_quantity;
+   fullEditForm.querySelector('[name=note]').value=count.note||'';
+   document.getElementById('full-live-stock').textContent=j.live_stock;
+   ['name','barcode','variant','category','reorder_level'].forEach(name=>fullEditForm.querySelector('[name='+name+']').disabled=!perms.edit_product);
+   fullEditForm.querySelector('[name=selling_price]').disabled=!perms.change_selling_price;
+   const costField=document.getElementById('full-cost-field');costField.hidden=!perms.view_cost_price;fullEditForm.querySelector('[name=cost_price]').disabled=!perms.change_cost_price;
+   const warning=document.getElementById('stocktake-reconcile-note');
+   if(j.manual_adjustment_during_stocktake){
+     warning.hidden=false;
+     document.getElementById('stocktake-reconcile-text').textContent='Current live stock is '+j.live_stock+'. '+j.manual_adjustment_during_stocktake.note+' The pending count has not been changed automatically.';
+     document.getElementById('use-live-stock').dataset.liveStock=j.live_stock;
+   }else{warning.hidden=true;}
+   fullEditCard.hidden=false;fullEditCard.scrollIntoView({behavior:'smooth',block:'start'});
+ }
+ document.getElementById('recent-list').addEventListener('click',e=>{const button=e.target.closest('.edit-count');if(!button)return;openFullEditor(button.dataset.barcode);});
  document.getElementById('count-search').addEventListener('input',filterCountedProducts);
+ document.getElementById('close-full-edit').onclick=()=>{fullEditCard.hidden=true;};
+ document.getElementById('use-live-stock').onclick=e=>{fullEditForm.querySelector('[name=good_quantity]').value=e.currentTarget.dataset.liveStock||0;};
+ fullEditForm.addEventListener('submit',async e=>{
+   e.preventDefault();const countId=fullEditForm.querySelector('[name=count_id]').value;if(!countId)return;
+   const url=editRecordUrlTemplate.replace('/0/','/'+countId+'/');
+   const originalBarcode=fullEditForm.dataset.originalBarcode;
+   const r=await fetch(url,{method:'POST',headers:{'X-CSRFToken':csrf},body:new FormData(fullEditForm)});const j=await r.json();
+   if(!r.ok){toast(j.error||'Could not update stocktake record','error');return;}
+   if(originalBarcode&&originalBarcode!==j.barcode){const oldRow=[...document.querySelectorAll('#recent-list [data-recent-barcode]')].find(el=>el.dataset.recentBarcode===originalBarcode);if(oldRow)oldRow.remove();}
+   addRecentRow(j);fullEditCard.hidden=true;toast('Full record updated for '+j.product,'success');
+ });
  document.getElementById('open-product-form').onclick=()=>showProductForm(barcode.value.trim());document.getElementById('close-product-form').onclick=()=>{unknown.hidden=true;};
  document.getElementById('product-form').addEventListener('submit',async e=>{e.preventDefault();const r=await fetch('{% url "stocktake_quick_product" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:new FormData(e.target)});const j=await r.json();if(!r.ok){toast(j.error||'Could not create product','error');return;}addRecentRow(j);toast(j.product+' created and opening stock saved.','success');e.target.reset();e.target.querySelector('[name=reorder_level]').value=5;unknown.hidden=true;barcode.value='';result.textContent='';result.className='';productReady=false;barcode.focus();});
  async function acceptCode(code){const now=Date.now();if(scanLock||(code===lastCode&&now-lastAt<1800))return;scanLock=true;lastCode=code;lastAt=now;barcode.value=code;productReady=false;toast('Barcode detected','success');if(navigator.vibrate)navigator.vibrate(80);await lookupProduct();setTimeout(()=>{scanLock=false},500);}
