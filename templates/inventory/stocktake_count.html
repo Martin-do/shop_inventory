@@ -24,6 +24,13 @@
 .stock-entry-box{margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--panel)}
 .stock-entry-box h4{margin:0 0 4px;font-size:14px}
 .stock-entry-box .qty-grid{margin-top:10px}
+.suggest-wrap{position:relative}
+.suggest-menu{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;background:var(--panel);border:1px solid var(--line-strong);border-radius:var(--radius-md);box-shadow:var(--shadow-card);max-height:230px;overflow:auto;padding:4px}
+.suggest-menu[hidden]{display:none}
+.suggest-option{display:block;width:100%;border:0;background:transparent;text-align:left;padding:10px 12px;border-radius:8px;color:inherit;cursor:pointer}
+.suggest-option:hover,.suggest-option:focus{background:var(--accent-tint);outline:none}
+.suggest-option strong{display:block;font-size:14px}
+.suggest-option small{display:block;color:var(--muted);margin-top:2px}
 @media(max-width:780px){.scan-grid{grid-template-columns:1fr}.camera-wrap,.camera-wrap video{min-height:220px}.qty-grid,.details-grid{grid-template-columns:1fr 1fr}.page{padding:12px}.lookup-row{grid-template-columns:1fr}.lookup-row .button{width:100%}}
 </style>
 <a href="{% url 'stocktake_detail' session.id %}">← {{ session.name }}</a>
@@ -53,11 +60,12 @@
 <form id="product-form">{% csrf_token %}
 <label>Barcode <span class="muted">(optional)</span></label><input name="barcode" id="new-barcode" placeholder="Scan/type barcode, or leave blank">
 <p class="form-note">No barcode? Leave this blank. The system will create an internal stock code automatically.</p>
-<label>Product name</label><input name="name" id="new-name" list="product-name-suggestions" required placeholder="e.g. Peak Milk" autocomplete="off">
-<div class="details-grid"><div><label>Variant / size</label><input name="variant" list="variant-suggestions" placeholder="e.g. 400g" autocomplete="off"></div><div><label>Category</label><input name="category" list="category-suggestions" placeholder="e.g. Provisions" autocomplete="off"></div></div>
-<datalist id="product-name-suggestions">{% for value in product_name_suggestions %}<option value="{{ value }}"></option>{% endfor %}</datalist>
-<datalist id="variant-suggestions">{% for value in variant_suggestions %}<option value="{{ value }}"></option>{% endfor %}</datalist>
-<datalist id="category-suggestions">{% for value in category_suggestions %}<option value="{{ value }}"></option>{% endfor %}</datalist>
+<label>Product name</label>
+<div class="suggest-wrap"><input name="name" id="new-name" data-suggest-field="name" required placeholder="e.g. Peak Milk" autocomplete="off"><div class="suggest-menu" data-suggest-menu="name" hidden></div></div>
+<div class="details-grid">
+<div><label>Variant / size</label><div class="suggest-wrap"><input name="variant" data-suggest-field="variant" placeholder="e.g. 400g" autocomplete="off"><div class="suggest-menu" data-suggest-menu="variant" hidden></div></div></div>
+<div><label>Category</label><div class="suggest-wrap"><input name="category" data-suggest-field="category" placeholder="e.g. Provisions" autocomplete="off"><div class="suggest-menu" data-suggest-menu="category" hidden></div></div></div>
+</div>
 <div class="details-grid"><div><label>Selling price</label><input name="selling_price" type="number" min="0" step="0.01" value="0"></div><div><label>Cost price</label><input name="cost_price" type="number" min="0" step="0.01" value="0"></div></div>
 <label>Low-stock alert level</label><input name="reorder_level" type="number" min="0" value="5">
 <div class="stock-entry-box">
@@ -82,6 +90,61 @@
  const form=document.getElementById('count-form'), barcode=document.getElementById('barcode'), result=document.getElementById('product-result'), unknown=document.getElementById('unknown-card'), newBarcode=document.getElementById('new-barcode'), newName=document.getElementById('new-name'), video=document.getElementById('camera');
  const csrf=form.querySelector('[name=csrfmiddlewaretoken]').value; let stream=null, detector=null, scanning=false, scanLock=false, lastCode='', lastAt=0, productReady=false;
  const toast=(m,t='info')=>window.shopToast?window.shopToast(m,t):console.log(m);
+ const suggestionUrl='{% url "stocktake_product_search" %}';
+ function bindSuggestions(input){
+   const field=input.dataset.suggestField, menu=document.querySelector('[data-suggest-menu="'+field+'"]');
+   if(!menu)return;
+   let timer=null, controller=null;
+   const hide=()=>{menu.hidden=true;menu.replaceChildren();};
+   const render=(items)=>{
+     menu.replaceChildren();
+     if(!items.length){hide();return;}
+     items.slice(0,8).forEach(item=>{
+       const button=document.createElement('button');button.type='button';button.className='suggest-option';
+       const strong=document.createElement('strong');strong.textContent=item.value;button.appendChild(strong);
+       if(item.meta){const small=document.createElement('small');small.textContent=item.meta;button.appendChild(small);}
+       button.addEventListener('mousedown',e=>e.preventDefault());
+       button.addEventListener('click',()=>{input.value=item.value;hide();input.focus();});
+       menu.appendChild(button);
+     });
+     menu.hidden=false;
+   };
+   input.addEventListener('input',()=>{
+     clearTimeout(timer);
+     const q=input.value.trim();
+     if(!q){if(controller)controller.abort();hide();return;}
+     timer=setTimeout(async()=>{
+       if(controller)controller.abort();
+       controller=new AbortController();
+       try{
+         const response=await fetch(suggestionUrl+'?q='+encodeURIComponent(q),{headers:{'X-Requested-With':'XMLHttpRequest'},signal:controller.signal});
+         if(!response.ok){hide();return;}
+         const data=await response.json(), seen=new Set(), items=[];
+         for(const product of (data.results||[])){
+           let value='', meta='';
+           if(field==='name'){
+             value=product.name||'';
+             meta=[product.variant,product.category].filter(Boolean).join(' · ');
+           }else if(field==='variant'){
+             value=product.variant||'';
+             meta=product.name||'';
+           }else if(field==='category'){
+             value=product.category||'';
+             meta=product.name||'';
+           }
+           const key=value.trim().toLowerCase();
+           if(!key||seen.has(key)||!key.includes(q.toLowerCase()))continue;
+           seen.add(key);items.push({value:value,meta:meta});
+         }
+         render(items);
+       }catch(err){if(err.name!=='AbortError')hide();}
+     },120);
+   });
+   input.addEventListener('focus',()=>{if(input.value.trim())input.dispatchEvent(new Event('input'));});
+   input.addEventListener('keydown',e=>{if(e.key==='Escape')hide();});
+   document.addEventListener('click',e=>{if(!menu.contains(e.target)&&e.target!==input)hide();});
+ }
+ document.querySelectorAll('[data-suggest-field]').forEach(bindSuggestions);
  function showProductForm(code=''){unknown.hidden=false;newBarcode.value=code||'';setTimeout(()=>newName.focus(),50);}
  function showProduct(j){productReady=true;unknown.hidden=true;result.className='product-banner';result.textContent=j.product+(j.variant?' — '+j.variant:'')+(j.category?' · '+j.category:'');document.getElementById('good-quantity').focus();}
  async function lookupProduct(){const code=barcode.value.trim();if(!code){toast('Enter or scan a barcode first.','error');return false;}const data=new FormData();data.append('barcode',code);data.append('lookup_only','1');data.append('csrfmiddlewaretoken',csrf);const r=await fetch('{% url "stocktake_save_count" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:data});const j=await r.json();if(r.status===404&&j.unknown){productReady=false;result.className='';result.textContent='No product found for '+j.barcode;showProductForm(j.barcode);return false;}if(!r.ok){toast(j.error||'Could not find product','error');return false;}showProduct(j);return true;}
