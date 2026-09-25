@@ -137,7 +137,7 @@ def stocktake_count_zone(request, zone_id):
         messages.error(request, "This zone is not open for counting.")
         return redirect("stocktake_detail", session_id=zone.session_id)
 
-    recent = zone.counts.select_related("product", "counted_by").order_by("-counted_at")[:30]
+    recent = zone.counts.select_related("product", "product__category", "counted_by").order_by("-counted_at")
     return render(
         request,
         "inventory/stocktake_count.html",
@@ -183,6 +183,8 @@ def stocktake_save_count(request, zone_id):
         "product": product.name,
         "variant": product.variant,
         "barcode": product.barcode,
+        "barcode_display": "No barcode" if product.barcode.startswith("MANUAL-") else product.barcode,
+        "category": product.category.name if product.category else "",
         "count_id": count.pk,
         "quantities": values,
     })

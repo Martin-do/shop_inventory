@@ -155,6 +155,136 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, "Start Camera Scanner")
         self.assertContains(response, "Manual barcode entry", html=False)
 
+    def test_existing_count_is_returned_for_editing(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        count = StocktakeCount.objects.create(
+            session=self.session,
+            zone=self.zone,
+            product=self.product,
+            good_quantity=9,
+            damaged_quantity=2,
+            expired_quantity=1,
+            reserved_quantity=3,
+            approved_good_quantity=9,
+            note="Needs recount",
+            counted_by=self.clerk,
+        )
+        self.client.force_login(self.clerk)
+        response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": self.product.barcode,
+            "lookup_only": "1",
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["existing_count"]["id"], count.pk)
+        self.assertEqual(payload["existing_count"]["good_quantity"], 9)
+        self.assertEqual(payload["existing_count"]["damaged_quantity"], 2)
+        self.assertEqual(payload["existing_count"]["expired_quantity"], 1)
+        self.assertEqual(payload["existing_count"]["reserved_quantity"], 3)
+        self.assertEqual(payload["existing_count"]["note"], "Needs recount")
+
+    def test_saving_existing_count_updates_instead_of_creating_duplicate(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        existing = StocktakeCount.objects.create(
+            session=self.session,
+            zone=self.zone,
+            product=self.product,
+            good_quantity=5,
+            approved_good_quantity=5,
+            counted_by=self.clerk,
+        )
+        self.client.force_login(self.clerk)
+        response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": self.product.barcode,
+            "good_quantity": 13,
+            "damaged_quantity": 1,
+            "expired_quantity": 0,
+            "reserved_quantity": 2,
+            "note": "Corrected physical count",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(StocktakeCount.objects.count(), 1)
+        existing.refresh_from_db()
+        self.assertEqual(existing.good_quantity, 13)
+        self.assertEqual(existing.damaged_quantity, 1)
+        self.assertEqual(existing.reserved_quantity, 2)
+        self.assertEqual(existing.note, "Corrected physical count")
+        payload = response.json()
+        self.assertEqual(payload["barcode_display"], self.product.barcode)
+        self.assertEqual(payload["category"], "")
+
+    def test_manual_barcode_count_update_keeps_no_barcode_display(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        product = Product.objects.create(
+            name="Loose Rice",
+            barcode="MANUAL-ABC123",
+            selling_price=Decimal("1200.00"),
+        )
+        StocktakeCount.objects.create(
+            session=self.session,
+            zone=self.zone,
+            product=product,
+            good_quantity=4,
+            approved_good_quantity=4,
+            counted_by=self.clerk,
+        )
+        self.client.force_login(self.clerk)
+        response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": product.barcode,
+            "good_quantity": 6,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["barcode_display"], "No barcode")
+
+    def test_recent_count_has_edit_action(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        StocktakeCount.objects.create(
+            session=self.session,
+            zone=self.zone,
+            product=self.product,
+            good_quantity=7,
+            approved_good_quantity=7,
+            counted_by=self.clerk,
+        )
+        self.client.force_login(self.clerk)
+        response = self.client.get(reverse("stocktake_count_zone", args=[self.zone.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="button edit-count"')
+        self.assertContains(response, f'data-barcode="{self.product.barcode}"')
+        self.assertContains(response, "Use Edit to reload a saved count")
+        self.assertContains(response, 'id="count-search"')
+        self.assertContains(response, 'data-search="milk 12345670')
+
+    def test_counted_product_search_includes_counts_beyond_first_thirty(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        for index in range(35):
+            product = Product.objects.create(
+                name=f"Search Item {index:02d}",
+                barcode=f"SEARCH{index:02d}",
+                selling_price=Decimal("100.00"),
+            )
+            StocktakeCount.objects.create(
+                session=self.session,
+                zone=self.zone,
+                product=product,
+                good_quantity=index + 1,
+                approved_good_quantity=index + 1,
+                counted_by=self.clerk,
+            )
+
+        self.client.force_login(self.clerk)
+        response = self.client.get(reverse("stocktake_count_zone", args=[self.zone.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Search Item 00")
+        self.assertContains(response, "Search Item 34")
+        self.assertEqual(len(response.context["recent"]), 35)
+
     def test_stocktake_search_suggests_from_first_character(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
         self.session.save(update_fields=["status"])
