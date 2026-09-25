@@ -157,6 +157,8 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, "BarcodeDetector")
         self.assertContains(response, "Start Camera Scanner")
         self.assertContains(response, "Manual barcode entry", html=False)
+        self.assertContains(response, "function closeCamera()")
+        self.assertContains(response, "Camera closed so you can finish the entry.")
 
     def test_existing_count_is_returned_for_editing(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
