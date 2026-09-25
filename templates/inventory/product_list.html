@@ -37,6 +37,12 @@
               {% csrf_token %}
               <button class="button">{% if product.is_active %}Deactivate{% else %}Activate{% endif %}</button>
             </form>
+            {% if perms.inventory.delete_products %}
+            <form method="post" action="{% url 'product_delete' product.pk %}" onsubmit="return confirm('Permanently delete {{ product.name|escapejs }}? This is allowed only when the product has no sales, stock, stocktake or receipt history.');">
+              {% csrf_token %}
+              <button class="button danger" type="submit">Delete</button>
+            </form>
+            {% endif %}
           </td>
         </tr>
       {% empty %}

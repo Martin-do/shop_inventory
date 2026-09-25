@@ -36,9 +36,9 @@ base.html: this partial adds no new access logic, only the layout around it.
       </a>
       {% endif %}
       {% if perms.inventory.receive_stock %}
-      <a href="{% url 'receive_stock' %}" class="sidebar-link{% if request.resolver_match.url_name == 'receive_stock' %} is-active{% endif %}">
+      <a href="{% url 'receive_stock' %}" class="sidebar-link{% if request.resolver_match.url_name == 'receive_stock' or request.resolver_match.url_name == 'stock_receipt_create' or request.resolver_match.url_name == 'stock_receipt_detail' %} is-active{% endif %}">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15V6"></path><path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"></path><path d="M8.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"></path><path d="M8.5 16V4"></path></svg>
-        <span class="sidebar-link-text">Receive stock</span>
+        <span class="sidebar-link-text">Stock receipts</span>
       </a>
       {% endif %}
       {% if perms.inventory.view_assigned_stocktakes %}
