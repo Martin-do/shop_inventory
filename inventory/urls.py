@@ -22,6 +22,7 @@ urlpatterns = [
     path("stocktakes/zones/<int:zone_id>/save/", granular_stocktake_views.stocktake_save_count, name="stocktake_save_count"),
     path("stocktakes/zones/<int:zone_id>/quick-product/", granular_stocktake_views.stocktake_quick_product, name="stocktake_quick_product"),
     path("stocktakes/zones/<int:zone_id>/complete/", granular_stocktake_views.stocktake_complete_zone, name="stocktake_complete_zone"),
+    path("stocktakes/counts/<int:count_id>/edit-record/", granular_stocktake_views.stocktake_edit_record, name="stocktake_edit_record"),
     path("stocktakes/counts/<int:count_id>/review/", granular_stocktake_views.stocktake_review_count, name="stocktake_review_count"),
     path("stocktakes/api/products/search/", granular_stocktake_views.stocktake_product_search, name="stocktake_product_search"),
     path("pos/", views.pos, name="pos"),
