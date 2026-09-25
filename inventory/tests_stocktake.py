@@ -229,6 +229,34 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, 'class="button edit-count"')
         self.assertContains(response, f'data-barcode="{self.product.barcode}"')
         self.assertContains(response, "Use Edit to reload a saved count")
+        self.assertContains(response, 'id="count-search"')
+        self.assertContains(response, 'data-search="milk 12345670')
+
+    def test_counted_product_search_includes_counts_beyond_first_thirty(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        for index in range(35):
+            product = Product.objects.create(
+                name=f"Search Item {index:02d}",
+                barcode=f"SEARCH{index:02d}",
+                selling_price=Decimal("100.00"),
+            )
+            StocktakeCount.objects.create(
+                session=self.session,
+                zone=self.zone,
+                product=product,
+                good_quantity=index + 1,
+                approved_good_quantity=index + 1,
+                counted_by=self.clerk,
+            )
+
+        self.client.force_login(self.clerk)
+        response = self.client.get(reverse("stocktake_count_zone", args=[self.zone.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Search Item 00")
+        self.assertContains(response, "Search Item 34")
+        self.assertEqual(len(response.context["recent"]), 35)
 
     def test_stocktake_search_suggests_from_first_character(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
