@@ -118,7 +118,7 @@
 </aside></div>
 <script>
 (() => {
- const form=document.getElementById('count-form'), barcode=document.getElementById('barcode'), result=document.getElementById('product-result'), unknown=document.getElementById('unknown-card'), newBarcode=document.getElementById('new-barcode'), newName=document.getElementById('new-name'), video=document.getElementById('camera');
+ const form=document.getElementById('count-form'), barcode=document.getElementById('barcode'), result=document.getElementById('product-result'), unknown=document.getElementById('unknown-card'), newBarcode=document.getElementById('new-barcode'), newName=document.getElementById('new-name'), video=document.getElementById('camera'), cameraWrap=document.getElementById('camera-wrap'), startCameraButton=document.getElementById('start-camera'), stopCameraButton=document.getElementById('stop-camera');
  const csrf=form.querySelector('[name=csrfmiddlewaretoken]').value; let stream=null, detector=null, scanning=false, scanLock=false, lastCode='', lastAt=0, productReady=false;
  const toast=(m,t='info')=>window.shopToast?window.shopToast(m,t):console.log(m);
  const suggestionUrl='{% url "stocktake_product_search" %}';
@@ -317,10 +317,28 @@
  });
  document.getElementById('open-product-form').onclick=()=>showProductForm(barcode.value.trim());document.getElementById('close-product-form').onclick=()=>{unknown.hidden=true;};
  document.getElementById('product-form').addEventListener('submit',async e=>{e.preventDefault();const r=await fetch('{% url "stocktake_quick_product" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:new FormData(e.target)});const j=await r.json();if(!r.ok){toast(j.error||'Could not create product','error');return;}addRecentRow(j);toast(j.product+' created and opening stock saved.','success');e.target.reset();e.target.querySelector('[name=reorder_level]').value=5;unknown.hidden=true;barcode.value='';result.textContent='';result.className='';productReady=false;barcode.focus();});
- async function acceptCode(code){const now=Date.now();if(scanLock||(code===lastCode&&now-lastAt<1800))return;scanLock=true;lastCode=code;lastAt=now;barcode.value=code;productReady=false;toast('Barcode detected','success');if(navigator.vibrate)navigator.vibrate(80);await lookupProduct();setTimeout(()=>{scanLock=false},500);}
- async function loop(){if(!scanning||!detector)return;try{const codes=await detector.detect(video);if(codes.length)await acceptCode(codes[0].rawValue);}catch(e){}requestAnimationFrame(loop);}
- document.getElementById('start-camera').onclick=async()=>{if(!window.isSecureContext){toast('Live camera scanning requires HTTPS. This local IP connection can still use manual or Bluetooth scanner entry.','error');return;}if(!('BarcodeDetector'in window)){toast('This Chrome version does not provide BarcodeDetector. Use photo or manual entry.','error');return;}try{detector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']});stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});video.srcObject=stream;await video.play();scanning=true;document.getElementById('start-camera').disabled=true;document.getElementById('stop-camera').disabled=false;loop();}catch(e){toast('Camera permission was denied or no camera is available.','error');}};
- document.getElementById('stop-camera').onclick=()=>{scanning=false;if(stream)stream.getTracks().forEach(t=>t.stop());video.srcObject=null;document.getElementById('start-camera').disabled=false;document.getElementById('stop-camera').disabled=true;};
+ function closeCamera(){
+   scanning=false;
+   if(stream)stream.getTracks().forEach(track=>track.stop());
+   stream=null;
+   video.srcObject=null;
+   startCameraButton.disabled=false;
+   stopCameraButton.disabled=true;
+   cameraWrap.hidden=true;
+ }
+ async function acceptCode(code){
+   const now=Date.now();
+   if(scanLock||(code===lastCode&&now-lastAt<1800))return;
+   scanLock=true;lastCode=code;lastAt=now;barcode.value=code;productReady=false;
+   closeCamera();
+   toast('Barcode detected. Camera closed so you can finish the entry.','success');
+   if(navigator.vibrate)navigator.vibrate(80);
+   await lookupProduct();
+   setTimeout(()=>{scanLock=false},500);
+ }
+ async function loop(){if(!scanning||!detector)return;try{const codes=await detector.detect(video);if(codes.length)await acceptCode(codes[0].rawValue);}catch(e){}if(scanning)requestAnimationFrame(loop);}
+ startCameraButton.onclick=async()=>{if(!window.isSecureContext){toast('Live camera scanning requires HTTPS. This local IP connection can still use manual or Bluetooth scanner entry.','error');return;}if(!('BarcodeDetector'in window)){toast('This Chrome version does not provide BarcodeDetector. Use photo or manual entry.','error');return;}try{detector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']});cameraWrap.hidden=false;stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});video.srcObject=stream;await video.play();scanning=true;startCameraButton.disabled=true;stopCameraButton.disabled=false;loop();}catch(e){cameraWrap.hidden=false;toast('Camera permission was denied or no camera is available.','error');}};
+ stopCameraButton.onclick=closeCamera;
  document.getElementById('photo-input').onchange=async e=>{if(!('BarcodeDetector'in window)){toast('Photo decoding is not supported in this browser.','error');return;}const file=e.target.files[0];if(!file)return;try{detector=detector||new BarcodeDetector();const bitmap=await createImageBitmap(file);const codes=await detector.detect(bitmap);bitmap.close();if(codes.length)acceptCode(codes[0].rawValue);else toast('No barcode found in that photo. Move closer and retry.','error');}catch(err){toast('Could not read that image.','error');}};
  window.addEventListener('beforeunload',()=>{if(stream)stream.getTracks().forEach(t=>t.stop())});
 })();
