@@ -114,6 +114,62 @@ class StockMovement(models.Model):
         return f"{self.product} {self.quantity:+d}"
 
 
+class StockReceipt(models.Model):
+    STATUS_DRAFT = "draft"
+    STATUS_SUBMITTED = "submitted"
+    STATUS_APPLIED = "applied"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, "Draft"),
+        (STATUS_SUBMITTED, "Awaiting approval"),
+        (STATUS_APPLIED, "Applied"),
+        (STATUS_CANCELLED, "Cancelled"),
+    ]
+
+    supplier = models.CharField(max_length=180, blank=True)
+    reference = models.CharField(max_length=120, blank=True)
+    notes = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT, db_index=True)
+    created_by = models.ForeignKey(User, related_name="created_stock_receipts", on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    submitted_by = models.ForeignKey(User, related_name="submitted_stock_receipts", on_delete=models.PROTECT, null=True, blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    applied_by = models.ForeignKey(User, related_name="applied_stock_receipts", on_delete=models.PROTECT, null=True, blank=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(User, related_name="cancelled_stock_receipts", on_delete=models.PROTECT, null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        label = self.reference or self.supplier or f"Receipt #{self.pk}"
+        return f"{label} ({self.get_status_display()})"
+
+    @property
+    def total_units(self):
+        return self.lines.aggregate(total=Sum("quantity"))["total"] or 0
+
+
+class StockReceiptLine(models.Model):
+    receipt = models.ForeignKey(StockReceipt, related_name="lines", on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, related_name="receipt_lines", on_delete=models.PROTECT)
+    quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    note = models.CharField(max_length=240, blank=True)
+    entered_by = models.ForeignKey(User, related_name="stock_receipt_lines", on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at", "product__name"]
+        constraints = [
+            models.UniqueConstraint(fields=["receipt", "product"], name="uniq_product_per_stock_receipt")
+        ]
+
+    def __str__(self):
+        return f"{self.product} +{self.quantity}"
+
+
 class Customer(models.Model):
     name = models.CharField(max_length=150)
     phone = models.CharField(max_length=30, blank=True)
