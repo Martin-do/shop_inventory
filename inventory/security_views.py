@@ -75,6 +75,35 @@ def product_update(request, pk):
     )
 
 
+@require_POST
+def product_delete(request, pk):
+    product = get_object_or_404(Product, pk=pk)
+
+    blockers = []
+    if product.movements.exists():
+        blockers.append("stock movement history")
+    if product.saleitem_set.exists():
+        blockers.append("sales history")
+    if product.stocktake_counts.exists():
+        blockers.append("stocktake history")
+    if product.receipt_lines.exists():
+        blockers.append("stock receipt history")
+
+    if blockers:
+        messages.error(
+            request,
+            f"'{product.name}' cannot be permanently deleted because it has "
+            + ", ".join(blockers)
+            + ". Deactivate it instead so the audit trail remains intact.",
+        )
+        return redirect("product_list")
+
+    name = product.name
+    product.delete()
+    messages.success(request, f"Unused product '{name}' permanently deleted.")
+    return redirect("product_list")
+
+
 @role_required([UserProfile.ROLE_ADMIN])
 @require_POST
 def trigger_manual_backup(request):
