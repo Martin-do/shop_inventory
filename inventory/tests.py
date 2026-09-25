@@ -7,6 +7,7 @@ from django.urls import reverse
 
 from .forms import ProductForm, ReceiveStockForm
 from .models import Category, Product, Sale, SaleItem, StockMovement, UserProfile
+from .stocktake_models import StocktakeCount, StocktakeSession, StocktakeZone
 
 
 def grant(user, *codenames):
@@ -183,6 +184,31 @@ class ProductViewTests(TestCase):
         product.refresh_from_db()
         self.assertFalse(product.is_active)
 
+
+    def test_product_list_exposes_pending_stocktake_quantity_without_changing_live_stock(self):
+        product = make_product(barcode="9004", stock=0)
+        session = StocktakeSession.objects.create(
+            name="Opening Count",
+            created_by=self.user,
+            status=StocktakeSession.STATUS_COUNTING,
+        )
+        zone = StocktakeZone.objects.create(session=session, name="Shelf A")
+        StocktakeCount.objects.create(
+            session=session,
+            zone=zone,
+            product=product,
+            good_quantity=14,
+            approved_good_quantity=14,
+            counted_by=self.user,
+        )
+
+        response = self.client.get(reverse("product_list"))
+
+        self.assertEqual(response.status_code, 200)
+        listed_product = next(item for item in response.context["products"] if item.pk == product.pk)
+        self.assertEqual(listed_product.stock_on_hand, 0)
+        self.assertEqual(listed_product.pending_stocktake_quantity, 14)
+        self.assertEqual(response.context["pending_stocktake_session"], session)
 
 class CheckoutTests(TestCase):
     def setUp(self):
