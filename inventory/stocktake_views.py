@@ -138,10 +138,19 @@ def stocktake_count_zone(request, zone_id):
         return redirect("stocktake_detail", session_id=zone.session_id)
 
     recent = zone.counts.select_related("product", "product__category", "counted_by").order_by("-counted_at")
+    query = request.GET.get("q", "").strip()
+    if query:
+        recent = recent.filter(
+            Q(product__name__icontains=query)
+            | Q(product__barcode__icontains=query)
+            | Q(product__variant__icontains=query)
+            | Q(product__category__name__icontains=query)
+            | Q(counted_by__username__icontains=query)
+        )
     return render(
         request,
         "inventory/stocktake_count.html",
-        {"zone": zone, "session": zone.session, "recent": recent},
+        {"zone": zone, "session": zone.session, "recent": recent, "count_search_query": query},
     )
 
 
