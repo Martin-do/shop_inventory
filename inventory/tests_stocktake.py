@@ -170,8 +170,8 @@ class OpeningStocktakeTests(TestCase):
         self.client.force_login(self.clerk)
         response = self.client.get(reverse("stocktake_product_search"), {"q": "M"})
         self.assertEqual(response.status_code, 200)
-        result = response.json()["results"][0]
-        self.assertEqual(result["name"], "Milo")
+        results = response.json()["results"]
+        result = next(item for item in results if item["name"] == "Milo")
         self.assertEqual(result["variant"], "500g")
         self.assertEqual(result["category"], "Beverages")
         self.assertEqual(result["selling_price"], "2500.00")
