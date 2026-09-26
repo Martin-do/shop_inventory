@@ -122,6 +122,10 @@ def stocktake_quick_product(request, zone_id):
     except (InvalidOperation, TypeError, ValueError):
         return JsonResponse({"error": "Enter valid prices and reorder level."}, status=400)
 
+    # Setting a purchase cost is a pricing decision, gated like everywhere else.
+    if not has_access(request.user, "change_cost_price"):
+        cost_price = Decimal("0.00")
+
     if selling_price < 0 or cost_price < 0:
         return JsonResponse({"error": "Prices cannot be negative."}, status=400)
 

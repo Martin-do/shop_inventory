@@ -81,6 +81,35 @@ class OpeningStocktakeTests(TestCase):
         self.assertEqual(second.status_code, 404)
         self.assertEqual(StockMovement.objects.filter(product=self.product).count(), 1)
 
+    def _quick_create(self, user, barcode):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        self.zone.assigned_users.add(user)
+        self.client.force_login(user)
+        return self.client.post(reverse("stocktake_quick_product", args=[self.zone.pk]), {
+            "barcode": barcode, "name": "Priced Item", "selling_price": "500.00",
+            "cost_price": "350.00", "reorder_level": "5", "good_quantity": "4",
+        })
+
+    def test_counter_without_cost_permission_cannot_set_cost_on_new_product(self):
+        from .tests import grant
+        counter = User.objects.create_user("no-cost-counter", password="pw")
+        grant(counter, "create_products_during_stocktake", "count_assigned_zones", "view_assigned_stocktakes")
+        response = self._quick_create(counter, "55500011")
+        self.assertEqual(response.status_code, 200)
+        product = Product.objects.get(barcode="55500011")
+        self.assertEqual(product.selling_price, Decimal("500.00"))
+        self.assertEqual(product.cost_price, Decimal("0.00"))
+
+    def test_counter_with_cost_permission_can_set_cost_on_new_product(self):
+        from .tests import grant
+        counter = User.objects.create_user("cost-counter", password="pw")
+        grant(counter, "create_products_during_stocktake", "count_assigned_zones",
+              "view_assigned_stocktakes", "change_cost_price")
+        response = self._quick_create(counter, "55500022")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Product.objects.get(barcode="55500022").cost_price, Decimal("350.00"))
+
     def test_unknown_barcode_can_be_created_during_count(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
         self.session.save(update_fields=["status"])
@@ -160,6 +189,8 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, "Manual barcode entry", html=False)
         self.assertContains(response, 'id="lookup-suggest-menu"')
         self.assertContains(response, "Scan barcode or type product name")
+        self.assertContains(response, "function closeCamera()")
+        self.assertContains(response, "Camera closed so you can finish the entry.")
 
     def test_existing_count_is_returned_for_editing(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
