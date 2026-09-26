@@ -323,6 +323,8 @@ body.sidebar-collapsed .sidebar-user {
 
 .page {
   max-width: 1180px;
+  /* Centered in the space beside the sidebar, as in the approved mockups. */
+  margin-inline: auto;
   padding: 26px 32px;
   animation: pageFadeIn .25s ease;
 }
