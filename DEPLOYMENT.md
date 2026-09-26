@@ -65,30 +65,26 @@ sudo systemctl daemon-reload
 
 ## Deploying an update
 
-Always back up the database first — the release includes a migration that
-changes staff accounts.
+Use the script in the repository. On the server:
 
 ```bash
-sudo mkdir -p /var/backups/shop_inventory && sudo cp /var/www/shop_inventory/shop_inventory.sqlite3 /var/backups/shop_inventory/pre-deploy-$(date +%Y%m%d-%H%M%S).sqlite3
+cd /var/www/shop_inventory && sudo -u www-data git pull --ff-only origin main && sudo bash deploy.sh
 ```
 
-Then, in order:
+(The first time only, you need the pull above so the script exists; afterwards
+`sudo bash /var/www/shop_inventory/deploy.sh` is enough.)
 
-```bash
-cd /var/www/shop_inventory && sudo -u www-data git pull --ff-only origin main
-```
+`deploy.sh` does, in order, and stops at the first failure:
 
-```bash
-sudo -u www-data .venv/bin/pip install -r requirements.txt
-```
-
-```bash
-sudo -u www-data bash -c 'set -a; . /etc/shop_inventory.env; set +a; .venv/bin/python manage.py migrate --noinput && .venv/bin/python manage.py collectstatic --noinput'
-```
-
-```bash
-sudo systemctl restart shop_inventory && sudo systemctl status shop_inventory --no-pager | head -8
-```
+1. Backs up the database with SQLite's backup API to
+   `/var/backups/shop_inventory/pre-deploy-<time>.sqlite3` (newest 20 kept).
+2. `git pull --ff-only origin main`, listing the commits it brought in.
+3. Installs dependencies and runs `manage.py check`.
+4. Runs migrations and `collectstatic`.
+5. Restarts `shop_inventory` only (never the school portal's `gunicorn.service`).
+   If it fails to start it prints the log and the exact rollback command.
+6. Runs `check --deploy` and `audit_access`, confirms the login page answers
+   200, and confirms DEBUG is off.
 
 If the service fails to start, the reason is almost always in:
 
@@ -99,34 +95,11 @@ sudo journalctl -u shop_inventory -n 40 --no-pager
 A message about `SECRET_KEY` or `ALLOWED_HOSTS` means the environment file is
 missing or incomplete.
 
-### A safer replacement for `deploy.sh`
-
-The existing `deploy.sh` restarts `gunicorn` (the **school portal**) instead of
-`shop_inventory`, and its `chmod` line points into the portal's folder. Replace
-its contents with:
-
-```bash
-#!/bin/bash
-set -euo pipefail
-cd /var/www/shop_inventory
-
-mkdir -p /var/backups/shop_inventory
-cp shop_inventory.sqlite3 "/var/backups/shop_inventory/pre-deploy-$(date +%Y%m%d-%H%M%S).sqlite3"
-
-sudo -u www-data git pull --ff-only origin main
-sudo -u www-data .venv/bin/pip install -r requirements.txt
-sudo -u www-data bash -c 'set -a; . /etc/shop_inventory.env; set +a; \
-  .venv/bin/python manage.py migrate --noinput && \
-  .venv/bin/python manage.py collectstatic --noinput'
-
-systemctl restart shop_inventory
-systemctl is-active shop_inventory
-echo "Shop Inventory deployed."
-```
-
-Run it as `sudo bash deploy.sh`. It leaves the portal alone.
+To deploy manually instead, follow the same steps by hand (see the script).
 
 ## Checks after every deploy
+
+The script already runs these; use them for a manual re-check.
 
 ```bash
 sudo -u www-data bash -c 'set -a; . /etc/shop_inventory.env; set +a; cd /var/www/shop_inventory && .venv/bin/python manage.py check --deploy && .venv/bin/python manage.py audit_access'
