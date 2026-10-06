@@ -115,3 +115,96 @@ class HardenedOfflineSyncTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(Sale.objects.count(), 0)
+
+
+    def test_pack_sale_uses_pack_price_and_deducts_base_units(self):
+        self.product.units_per_pack = 5
+        self.product.pack_selling_price = Decimal("1100.00")
+        self.product.save(update_fields=["units_per_pack", "pack_selling_price"])
+        StockMovement.objects.create(
+            product=self.product,
+            movement_type=StockMovement.RECEIVE,
+            quantity=15,
+            note="Extra pack-sale stock",
+        )
+        self.client.force_login(self.cashier)
+
+        response = self.post(self.payload(
+            temp_receipt="OFFLINE-PACK-001",
+            amount_paid="2200.00",
+            items=[{
+                "barcode": self.product.barcode,
+                "sale_unit": "pack",
+                "sale_quantity": 2,
+                "unit_price": "1.00",
+            }],
+        ))
+
+        self.assertEqual(response.status_code, 200)
+        sale = Sale.objects.get()
+        item = sale.items.get()
+        self.assertEqual(sale.total, Decimal("2200.00"))
+        self.assertEqual(item.sale_unit, "pack")
+        self.assertEqual(item.sale_quantity, 2)
+        self.assertEqual(item.quantity, 10)
+        self.assertEqual(item.units_per_pack_snapshot, 5)
+        self.assertEqual(item.unit_price, Decimal("1100.00"))
+        self.assertEqual(self.product.stock_on_hand, 10)
+
+    def test_pack_sale_uses_unit_price_times_pack_size_when_pack_price_blank(self):
+        self.product.units_per_pack = 4
+        self.product.pack_selling_price = None
+        self.product.save(update_fields=["units_per_pack", "pack_selling_price"])
+        StockMovement.objects.create(
+            product=self.product,
+            movement_type=StockMovement.RECEIVE,
+            quantity=7,
+            note="Extra pack-sale stock",
+        )
+        self.client.force_login(self.cashier)
+
+        response = self.post(self.payload(
+            temp_receipt="OFFLINE-PACK-002",
+            amount_paid="1000.00",
+            items=[{
+                "barcode": self.product.barcode,
+                "sale_unit": "pack",
+                "sale_quantity": 1,
+            }],
+        ))
+
+        self.assertEqual(response.status_code, 200)
+        item = Sale.objects.get().items.get()
+        self.assertEqual(item.unit_price, Decimal("1000.00"))
+        self.assertEqual(item.quantity, 4)
+
+    def test_pack_sale_is_rejected_when_product_has_no_pack_configuration(self):
+        self.client.force_login(self.cashier)
+        response = self.post(self.payload(
+            temp_receipt="OFFLINE-PACK-003",
+            items=[{
+                "barcode": self.product.barcode,
+                "sale_unit": "pack",
+                "sale_quantity": 1,
+            }],
+        ))
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Sale.objects.count(), 0)
+        self.assertIn("not configured for pack sales", response.json()["errors"][0]["error"])
+
+    def test_mixed_pack_and_unit_sale_checks_combined_base_stock(self):
+        self.product.units_per_pack = 3
+        self.product.save(update_fields=["units_per_pack"])
+        self.client.force_login(self.cashier)
+
+        response = self.post(self.payload(
+            temp_receipt="OFFLINE-PACK-004",
+            items=[
+                {"barcode": self.product.barcode, "sale_unit": "pack", "sale_quantity": 1},
+                {"barcode": self.product.barcode, "sale_unit": "unit", "sale_quantity": 3},
+            ],
+        ))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Sale.objects.count(), 0)
+        self.assertIn("Insufficient stock", response.json()["errors"][0]["error"])
