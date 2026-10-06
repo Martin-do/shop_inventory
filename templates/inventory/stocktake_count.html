@@ -101,7 +101,8 @@
 <div class="details-grid"><div><label>Selling price</label><input name="selling_price" type="number" min="0" step="0.01" value="0"></div><div><label>Cost price</label><input name="cost_price" type="number" min="0" step="0.01" value="0"></div></div>
 <label>Low-stock alert level</label><input name="reorder_level" type="number" min="0" value="5">
 <label>Units per pack <span class="muted">(optional)</span></label><input name="units_per_pack" type="number" min="2" inputmode="numeric" placeholder="e.g. 10 or 12">
-<p class="form-note">Leave blank for products that are not normally counted in packs.</p>
+<label>Pack selling price <span class="muted">(optional)</span></label><input name="pack_selling_price" type="number" min="0" step="0.01" placeholder="Defaults to unit price × pack size">
+<p class="form-note">Leave pack fields blank for products that are not normally sold in packs.</p>
 <div class="stock-entry-box">
 <h4>Opening stock quantities</h4>
 <p class="form-note">Enter the physical stock available now. Sellable stock becomes the product's usable balance only after this stocktake is reviewed and applied.</p>
@@ -136,6 +137,7 @@
 <div class="details-grid"><div><label>Selling price</label><input name="selling_price" type="number" min="0" step="0.01"></div><div id="full-cost-field"><label>Cost price</label><input name="cost_price" type="number" min="0" step="0.01"></div></div>
 <label>Low-stock alert level</label><input name="reorder_level" type="number" min="0">
 <label>Units per pack <span class="muted">(optional)</span></label><input name="units_per_pack" type="number" min="2" inputmode="numeric" placeholder="e.g. 10 or 12">
+<label>Pack selling price <span class="muted">(optional)</span></label><input name="pack_selling_price" type="number" min="0" step="0.01" placeholder="Defaults to unit price × pack size">
 <div class="stock-entry-box"><h4>Stocktake quantities</h4>
 <div class="pack-entry" data-pack-counter>
   <label>Count sellable stock as</label><select name="count_entry_mode"><option value="units">Total units</option><option value="packs">Packs + loose units</option></select>
@@ -290,6 +292,7 @@
    if(Object.prototype.hasOwnProperty.call(product,'cost_price'))fill('cost_price',product.cost_price);
    fill('reorder_level',product.reorder_level??0);
    fill('units_per_pack',product.units_per_pack??'');
+   fill('pack_selling_price',product.pack_selling_price??'');
    target.dataset.autofilledProductId=String(product.id||'');
    toast('Related product details filled automatically. Review and edit what is different.','success');
  }
@@ -445,6 +448,7 @@
    fullEditForm.querySelector('[name=cost_price]').value=j.cost_price||0;
    fullEditForm.querySelector('[name=reorder_level]').value=j.reorder_level??0;
    fullEditForm.querySelector('[name=units_per_pack]').value=j.units_per_pack??'';
+   fullEditForm.querySelector('[name=pack_selling_price]').value=j.pack_selling_price??'';
    fullEditForm.querySelector('[name=good_quantity]').value=count.good_quantity;
    fullEditForm.querySelector('[name=damaged_quantity]').value=count.damaged_quantity;
    fullEditForm.querySelector('[name=expired_quantity]').value=count.expired_quantity;
@@ -453,6 +457,7 @@
    document.getElementById('full-live-stock').textContent=j.live_stock;
    ['name','barcode','variant','category','reorder_level','units_per_pack'].forEach(name=>fullEditForm.querySelector('[name='+name+']').disabled=!perms.edit_product);
    fullEditForm.querySelector('[name=selling_price]').disabled=!(perms.edit_product&&perms.change_selling_price);
+   fullEditForm.querySelector('[name=pack_selling_price]').disabled=!(perms.edit_product&&perms.change_selling_price);
    const costField=document.getElementById('full-cost-field');costField.hidden=!perms.view_cost_price;fullEditForm.querySelector('[name=cost_price]').disabled=!(perms.edit_product&&perms.change_cost_price);
    const warning=document.getElementById('stocktake-reconcile-note');
    configurePackCounter(fullEditForm,j,count);
