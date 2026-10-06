@@ -24,7 +24,7 @@ class ProductForm(forms.ModelForm):
 
     class Meta:
         model = Product
-        fields = ["name", "variant", "barcode", "category", "cost_price", "selling_price", "units_per_pack", "reorder_level", "image", "is_active"]
+        fields = ["name", "variant", "barcode", "category", "cost_price", "selling_price", "units_per_pack", "pack_selling_price", "reorder_level", "image", "is_active"]
         widgets = {
             "name": forms.TextInput(attrs={"autofocus": True}),
             "barcode": forms.TextInput(attrs={"autocomplete": "off"}),
@@ -42,17 +42,20 @@ class ProductForm(forms.ModelForm):
         self.fields["units_per_pack"].required = False
         self.fields["units_per_pack"].label = "Units per pack (optional)"
         self.fields["units_per_pack"].widget.attrs.update({"min": 2, "placeholder": "e.g. 10, 12, 24"})
+        self.fields["pack_selling_price"].required = False
+        self.fields["pack_selling_price"].label = "Pack Selling Price (₦, optional)"
+        self.fields["pack_selling_price"].widget.attrs.update({"min": 0, "step": "0.01", "placeholder": "Leave blank to use unit price × pack size"})
         if self.instance.pk:
             # Editing an existing product: opening stock only applies on create.
             self.fields.pop("opening_stock")
             self.fields["total_stock"].initial = self.instance.stock_on_hand
-            self.order_fields(["name", "variant", "barcode", "category", "new_category", "cost_price", "selling_price", "units_per_pack", "total_stock", "adjustment_note", "reorder_level", "image", "is_active"])
+            self.order_fields(["name", "variant", "barcode", "category", "new_category", "cost_price", "selling_price", "units_per_pack", "pack_selling_price", "total_stock", "adjustment_note", "reorder_level", "image", "is_active"])
         else:
             # Creating: new products are active by default; no toggle needed yet.
             self.fields.pop("is_active")
             self.fields.pop("total_stock")
             self.fields.pop("adjustment_note")
-            self.order_fields(["name", "variant", "barcode", "category", "new_category", "cost_price", "selling_price", "units_per_pack", "reorder_level", "image", "opening_stock"])
+            self.order_fields(["name", "variant", "barcode", "category", "new_category", "cost_price", "selling_price", "units_per_pack", "pack_selling_price", "reorder_level", "image", "opening_stock"])
         self._apply_field_permissions()
 
     def _apply_field_permissions(self):
@@ -119,6 +122,14 @@ class ProductForm(forms.ModelForm):
         if value is not None and value < 2:
             raise forms.ValidationError("Units per pack must be at least 2.")
         return value
+
+    def clean(self):
+        cleaned_data = super().clean()
+        units_per_pack = cleaned_data.get("units_per_pack")
+        pack_price = cleaned_data.get("pack_selling_price")
+        if pack_price is not None and not units_per_pack:
+            self.add_error("pack_selling_price", "Set Units per pack before setting a pack selling price.")
+        return cleaned_data
 
     def clean_barcode(self):
         return self.cleaned_data["barcode"].strip()
