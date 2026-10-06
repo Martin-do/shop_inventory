@@ -46,14 +46,34 @@
           <label>Selling price<input name="selling_price" type="number" min="0" step="0.01"></label>
           {% if can_change_cost %}<label>Cost price<input name="cost_price" type="number" min="0" step="0.01"></label>{% endif %}
         </div>
+        <label>Units per pack <span style="color:var(--muted);">(optional)</span><input name="units_per_pack" id="receipt-units-per-pack" type="number" min="2" placeholder="e.g. 10 or 12"></label>
+        <label>Pack selling price <span style="color:var(--muted);">(optional)</span><input name="pack_selling_price" type="number" min="0" step="0.01" placeholder="Defaults to unit price × pack size"></label>
         <label>Low-stock alert level<input name="reorder_level" type="number" min="0" value="5"></label>
       </div>
     </details>
     {% endif %}
 
+    {% if not can_create_products %}
+    <label>Units per pack <span style="color:var(--muted);">(optional)</span><input name="units_per_pack" id="receipt-units-per-pack" type="number" min="2" placeholder="e.g. 10 or 12"></label>
+    {% endif %}
     <div style="display:grid;grid-template-columns:180px 1fr;gap:12px;align-items:end;">
-      <label>Quantity received<input name="quantity" type="number" min="1" required></label>
-      <label>Line note<input name="note" maxlength="240" placeholder="Optional condition, pack count, etc."></label>
+      <label>Count received stock as
+        <select name="count_entry_mode" id="receipt-entry-mode">
+          <option value="units">Total units</option>
+          <option value="packs">Packs + loose units</option>
+        </select>
+      </label>
+      <label>Line note<input name="note" maxlength="240" placeholder="Optional condition or delivery note"></label>
+    </div>
+    <div id="receipt-unit-entry">
+      <label>Quantity received (units)<input name="quantity" id="receipt-quantity" type="number" min="1"></label>
+    </div>
+    <div id="receipt-pack-entry" style="display:none;padding:12px;border:1px dashed var(--line-strong);border-radius:10px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <label>Full packs<input name="pack_count" id="receipt-pack-count" type="number" min="0" value="0"></label>
+        <label>Loose units<input name="loose_units" id="receipt-loose-units" type="number" min="0" value="0"></label>
+      </div>
+      <strong id="receipt-pack-total" style="display:block;margin-top:8px;">Set units per pack to calculate total.</strong>
     </div>
     <button class="button primary" type="submit">Add to Receipt</button>
   </form>
@@ -67,8 +87,16 @@
       {% for line in lines %}
       <tr>
         <td style="padding-left:20px;"><strong>{{ line.product.name }}</strong>{% if line.product.variant %} <span style="color:var(--muted);">({{ line.product.variant }})</span>{% endif %}<br><small>{% if line.product.barcode|slice:":7" == "MANUAL-" %}No physical barcode{% else %}{{ line.product.barcode }}{% endif %}</small></td>
-        <td><strong>{{ line.quantity_received }}</strong>{% if line.note %}<br><small>{{ line.note }}</small>{% endif %}</td>
-        <td>{% if line.approved_quantity != None %}<strong>{{ line.approved_quantity }}</strong>{% else %}-{% endif %}</td>
+        <td>
+          <strong>{{ line.quantity_received }} units</strong>
+          {% if line.count_entry_mode == "packs" and line.units_per_pack_snapshot %}
+            <br><small>{{ line.pack_count_entered|default:0 }} pack{{ line.pack_count_entered|default:0|pluralize }} × {{ line.units_per_pack_snapshot }} + {{ line.loose_units_entered|default:0 }} loose</small>
+          {% elif line.product.units_per_pack %}
+            <br><small>Pack size: {{ line.product.units_per_pack }} units</small>
+          {% endif %}
+          {% if line.note %}<br><small>{{ line.note }}</small>{% endif %}
+        </td>
+        <td>{% if line.approved_quantity != None %}<strong>{{ line.approved_quantity }} units</strong>{% else %}-{% endif %}</td>
         <td>{% if line.status == "approved" %}<span class="badge badge-ok">Approved</span>{% else %}<span class="badge badge-low">Pending</span>{% endif %}</td>
         <td>{{ line.entered_by.username }}</td>
         <td style="padding-right:20px;">
@@ -127,16 +155,55 @@
   const input = document.getElementById("receipt-product-search");
   const menu = document.getElementById("receipt-product-suggestions");
   const found = document.getElementById("receipt-found-product");
+  const form = document.getElementById("receipt-line-form");
+  const mode = document.getElementById("receipt-entry-mode");
+  const unitEntry = document.getElementById("receipt-unit-entry");
+  const packEntry = document.getElementById("receipt-pack-entry");
+  const qty = document.getElementById("receipt-quantity");
+  const packCount = document.getElementById("receipt-pack-count");
+  const looseUnits = document.getElementById("receipt-loose-units");
+  const unitsPerPack = document.getElementById("receipt-units-per-pack");
+  const packTotal = document.getElementById("receipt-pack-total");
+  const canEditProducts = {{ can_edit_products|yesno:"true,false" }};
   if (!input || !menu) return;
   let timer = null;
   let controller = null;
+  let selectedExistingProduct = false;
 
   const hide = () => { menu.style.display = "none"; menu.replaceChildren(); };
+  const updatePackEntry = () => {
+    const usingPacks = mode && mode.value === "packs";
+    if (unitEntry) unitEntry.style.display = usingPacks ? "none" : "block";
+    if (packEntry) packEntry.style.display = usingPacks ? "block" : "none";
+    if (!usingPacks) return;
+    const units = parseInt(unitsPerPack?.value || "0", 10);
+    const packs = parseInt(packCount?.value || "0", 10);
+    const loose = parseInt(looseUnits?.value || "0", 10);
+    if (!units || units < 2) {
+      packTotal.textContent = "Set units per pack to calculate total.";
+      return;
+    }
+    if (loose >= units) {
+      packTotal.textContent = "Loose units must be fewer than " + units + ".";
+      return;
+    }
+    packTotal.textContent = packs + " pack" + (packs === 1 ? "" : "s") + " × " + units + " + " + loose + " loose = " + ((packs * units) + loose) + " units";
+  };
+  [mode, unitsPerPack, packCount, looseUnits].forEach((el) => {
+    if (el) {
+      el.addEventListener("input", updatePackEntry);
+      el.addEventListener("change", updatePackEntry);
+    }
+  });
 
   input.addEventListener("input", () => {
     clearTimeout(timer);
     const q = input.value.trim();
-    if (!q) { hide(); found.style.display = "none"; return; }
+    if (!q) {
+      hide(); found.style.display = "none"; selectedExistingProduct = false;
+      if (unitsPerPack) { unitsPerPack.readOnly = false; }
+      return;
+    }
     timer = setTimeout(async () => {
       if (controller) controller.abort();
       controller = new AbortController();
@@ -153,11 +220,22 @@
           button.textContent = product.name + (product.variant ? " (" + product.variant + ")" : "") + " · " + product.barcode;
           button.addEventListener("click", () => {
             input.value = product.barcode;
-            found.textContent = product.name + (product.variant ? " (" + product.variant + ")" : "") + " · Current stock: " + product.stock;
+            selectedExistingProduct = true;
+            found.textContent = product.name + (product.variant ? " (" + product.variant + ")" : "") +
+              " · Current stock: " + product.stock +
+              (product.units_per_pack ? " · " + product.units_per_pack + " units/pack" : "");
             found.style.display = "block";
+            if (unitsPerPack) {
+              unitsPerPack.value = product.units_per_pack || "";
+              unitsPerPack.readOnly = !canEditProducts;
+            }
+            if (mode && mode.value === "packs" && !product.units_per_pack && !canEditProducts) {
+              mode.value = "units";
+            }
+            updatePackEntry();
             hide();
-            const qty = document.querySelector('[name="quantity"]');
-            if (qty) qty.focus();
+            if (product.units_per_pack && mode && mode.value === "packs" && packCount) packCount.focus();
+            else if (qty) qty.focus();
           });
           menu.appendChild(button);
         });
@@ -171,6 +249,21 @@
   document.addEventListener("click", (event) => {
     if (!menu.contains(event.target) && event.target !== input) hide();
   });
+  form.addEventListener("submit", (event) => {
+    if (mode && mode.value === "packs") {
+      const units = parseInt(unitsPerPack?.value || "0", 10);
+      const packs = parseInt(packCount?.value || "0", 10);
+      const loose = parseInt(looseUnits?.value || "0", 10);
+      if (!units || units < 2 || packs < 0 || loose < 0 || loose >= units || ((packs * units) + loose) < 1) {
+        event.preventDefault();
+        alert("Check units per pack, full packs and loose units before adding this receipt line.");
+      }
+    } else if (!parseInt(qty?.value || "0", 10)) {
+      event.preventDefault();
+      alert("Enter the total units received.");
+    }
+  });
+  updatePackEntry();
 })();
 </script>
 {% endif %}
