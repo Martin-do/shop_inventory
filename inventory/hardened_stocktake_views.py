@@ -73,6 +73,8 @@ def stocktake_save_count(request, zone_id):
         "selling_price": str(product.selling_price),
         "reorder_level": product.reorder_level,
         "units_per_pack": product.units_per_pack,
+        "pack_selling_price": str(product.pack_selling_price) if product.pack_selling_price is not None else "",
+        "effective_pack_selling_price": str(product.effective_pack_selling_price) if product.effective_pack_selling_price is not None else "",
         "live_stock": product.stock_on_hand,
         "manual_adjustment_during_stocktake": {
             "note": manual_adjustment.note,
@@ -129,16 +131,20 @@ def stocktake_quick_product(request, zone_id):
     try:
         selling_price = Decimal(request.POST.get("selling_price", "0") or "0")
         cost_price = Decimal(request.POST.get("cost_price", "0") or "0")
+        pack_price_raw = str(request.POST.get("pack_selling_price", "") or "").strip()
+        pack_selling_price = Decimal(pack_price_raw) if pack_price_raw else None
         reorder_level = max(0, int(request.POST.get("reorder_level", "5") or 5))
     except (InvalidOperation, TypeError, ValueError):
         return JsonResponse({"error": "Enter valid prices and reorder level."}, status=400)
 
-    if selling_price < 0 or cost_price < 0:
+    if selling_price < 0 or cost_price < 0 or (pack_selling_price is not None and pack_selling_price < 0):
         return JsonResponse({"error": "Prices cannot be negative."}, status=400)
 
     units_per_pack, _, pack_error = _resolve_units_per_pack(request.POST, None)
     if pack_error:
         return JsonResponse({"error": pack_error}, status=400)
+    if pack_selling_price is not None and not units_per_pack:
+        return JsonResponse({"error": "Set Units per pack before setting a pack selling price."}, status=400)
 
     quantities, pack_entry, quantity_error = _parse_stocktake_entry(request.POST, units_per_pack)
     if quantity_error:
@@ -157,6 +163,7 @@ def stocktake_quick_product(request, zone_id):
         cost_price=cost_price,
         reorder_level=reorder_level,
         units_per_pack=units_per_pack,
+        pack_selling_price=pack_selling_price,
         category=category,
     )
     count = StocktakeCount.objects.create(
@@ -216,6 +223,8 @@ def stocktake_quick_product(request, zone_id):
         "has_barcode": bool(supplied_barcode),
         "category": category.name if category else "",
         "units_per_pack": product.units_per_pack,
+        "pack_selling_price": str(product.pack_selling_price) if product.pack_selling_price is not None else "",
+        "effective_pack_selling_price": str(product.effective_pack_selling_price) if product.effective_pack_selling_price is not None else "",
         "count_id": count.pk,
         "count_entry": pack_entry,
         "quantities": quantities,
@@ -287,11 +296,16 @@ def stocktake_edit_record(request, count_id):
         if can_change_selling_price:
             try:
                 selling_price = Decimal(request.POST.get("selling_price", product.selling_price))
+                pack_price_raw = str(request.POST.get("pack_selling_price", "") or "").strip()
+                pack_selling_price = Decimal(pack_price_raw) if pack_price_raw else None
             except (InvalidOperation, TypeError, ValueError):
-                return JsonResponse({"error": "Enter a valid selling price."}, status=400)
-            if selling_price < 0:
-                return JsonResponse({"error": "Selling price cannot be negative."}, status=400)
+                return JsonResponse({"error": "Enter valid selling prices."}, status=400)
+            if selling_price < 0 or (pack_selling_price is not None and pack_selling_price < 0):
+                return JsonResponse({"error": "Selling prices cannot be negative."}, status=400)
+            if pack_selling_price is not None and not units_per_pack:
+                return JsonResponse({"error": "Set Units per pack before setting a pack selling price."}, status=400)
             product.selling_price = selling_price
+            product.pack_selling_price = pack_selling_price
 
         if can_change_cost_price:
             try:
@@ -344,6 +358,8 @@ def stocktake_edit_record(request, count_id):
         "selling_price": str(product.selling_price),
         "reorder_level": product.reorder_level,
         "units_per_pack": product.units_per_pack,
+        "pack_selling_price": str(product.pack_selling_price) if product.pack_selling_price is not None else "",
+        "effective_pack_selling_price": str(product.effective_pack_selling_price) if product.effective_pack_selling_price is not None else "",
         "live_stock": product.stock_on_hand,
         "count_entry": pack_entry,
         "quantities": quantities,
