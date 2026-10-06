@@ -55,8 +55,8 @@
       <tbody>
         {% for item in sale.items.all %}
           <tr>
-            <td>{{ item.product.name }}{% if item.product.variant %} ({{ item.product.variant }}){% endif %}<br><span style="font-size: 9.5px;">@ ₦{{ item.unit_price|intcomma }}</span></td>
-            <td class="text-center">{{ item.quantity }}</td>
+            <td>{{ item.product.name }}{% if item.product.variant %} ({{ item.product.variant }}){% endif %}<br><span style="font-size: 9.5px;">@ ₦{{ item.unit_price|intcomma }} / {{ item.get_sale_unit_display|lower }}{% if item.sale_unit == "pack" and item.units_per_pack_snapshot %} ({{ item.units_per_pack_snapshot }} units){% endif %}</span></td>
+            <td class="text-center">{{ item.sale_quantity }} {{ item.get_sale_unit_display|lower }}{{ item.sale_quantity|pluralize }}{% if item.sale_unit == "pack" %}<br><span style="font-size:9px;">{{ item.quantity }} units</span>{% endif %}</td>
             <td class="text-right">₦{{ item.line_total|intcomma }}</td>
           </tr>
         {% endfor %}

@@ -19,6 +19,60 @@ def _can_open_receipts(user):
     )
 
 
+def _parse_optional_pack_size(raw_value, current=None):
+    raw = str(raw_value or "").strip()
+    if not raw:
+        return current, None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None, "Units per pack must be a whole number."
+    if value < 2:
+        return None, "Units per pack must be at least 2."
+    return value, None
+
+
+def _parse_receipt_quantity(post_data, units_per_pack):
+    mode = (post_data.get("count_entry_mode") or "units").strip().lower()
+    if mode not in {"units", "packs"}:
+        return None, None, "Choose either Total units or Packs + loose units."
+
+    if mode == "units":
+        try:
+            quantity = int(str(post_data.get("quantity", "") or "").strip())
+        except (TypeError, ValueError):
+            quantity = 0
+        if quantity < 1:
+            return None, None, "Quantity received must be at least 1."
+        return quantity, {
+            "count_entry_mode": "units",
+            "pack_count_entered": None,
+            "loose_units_entered": None,
+            "units_per_pack_snapshot": None,
+        }, None
+
+    if not units_per_pack:
+        return None, None, "Set Units per pack before receiving this product by packs."
+    try:
+        pack_count = int(str(post_data.get("pack_count", 0) or 0).strip())
+        loose_units = int(str(post_data.get("loose_units", 0) or 0).strip())
+    except (TypeError, ValueError):
+        return None, None, "Pack count and loose units must be whole numbers."
+    if pack_count < 0 or loose_units < 0:
+        return None, None, "Pack count and loose units cannot be negative."
+    if loose_units >= units_per_pack:
+        return None, None, f"Loose units must be fewer than {units_per_pack}; add another full pack instead."
+    quantity = (pack_count * units_per_pack) + loose_units
+    if quantity < 1:
+        return None, None, "Received stock must contain at least one unit."
+    return quantity, {
+        "count_entry_mode": "packs",
+        "pack_count_entered": pack_count,
+        "loose_units_entered": loose_units,
+        "units_per_pack_snapshot": units_per_pack,
+    }, None
+
+
 @permission_required("receive_stock")
 def receipt_list(request):
     receipts = StockReceipt.objects.select_related(
@@ -81,6 +135,7 @@ def receipt_detail(request, receipt_id):
             "can_apply": has_access(request.user, "apply_stock_receipts"),
             "can_create_products": has_access(request.user, "create_products"),
             "can_change_cost": has_access(request.user, "change_cost_price"),
+            "can_edit_products": has_access(request.user, "edit_products"),
             "active_stocktake_products": active_stocktake_products,
         },
     )
@@ -96,15 +151,6 @@ def receipt_add_line(request, receipt_id):
         return redirect("stock_receipt_detail", receipt_id=receipt.pk)
 
     barcode = request.POST.get("barcode", "").strip()
-    quantity_raw = request.POST.get("quantity", "").strip()
-    try:
-        quantity = int(quantity_raw)
-    except (TypeError, ValueError):
-        quantity = 0
-    if quantity < 1:
-        messages.error(request, "Quantity received must be at least 1.")
-        return redirect("stock_receipt_detail", receipt_id=receipt.pk)
-
     product = Product.objects.filter(barcode=barcode, is_active=True).first() if barcode else None
 
     if product is None:
@@ -126,12 +172,22 @@ def receipt_add_line(request, receipt_id):
         try:
             selling_price = Decimal(request.POST.get("selling_price", "0") or "0")
             cost_price = Decimal(request.POST.get("cost_price", "0") or "0")
+            pack_price_raw = str(request.POST.get("pack_selling_price", "") or "").strip()
+            pack_selling_price = Decimal(pack_price_raw) if pack_price_raw else None
         except InvalidOperation:
             messages.error(request, "Enter valid product prices.")
             return redirect("stock_receipt_detail", receipt_id=receipt.pk)
 
-        if selling_price < 0 or cost_price < 0:
+        if selling_price < 0 or cost_price < 0 or (pack_selling_price is not None and pack_selling_price < 0):
             messages.error(request, "Product prices cannot be negative.")
+            return redirect("stock_receipt_detail", receipt_id=receipt.pk)
+
+        units_per_pack, pack_error = _parse_optional_pack_size(request.POST.get("units_per_pack"))
+        if pack_error:
+            messages.error(request, pack_error)
+            return redirect("stock_receipt_detail", receipt_id=receipt.pk)
+        if pack_selling_price is not None and not units_per_pack:
+            messages.error(request, "Set Units per pack before setting a pack selling price.")
             return redirect("stock_receipt_detail", receipt_id=receipt.pk)
 
         category = None
@@ -146,20 +202,58 @@ def receipt_add_line(request, receipt_id):
             category=category,
             cost_price=cost_price if has_access(request.user, "change_cost_price") else Decimal("0.00"),
             selling_price=selling_price,
+            units_per_pack=units_per_pack,
+            pack_selling_price=pack_selling_price,
             reorder_level=max(0, int(request.POST.get("reorder_level", "5") or "5")),
         )
+    else:
+        units_per_pack, pack_error = _parse_optional_pack_size(
+            request.POST.get("units_per_pack"),
+            product.units_per_pack,
+        )
+        if pack_error:
+            messages.error(request, pack_error)
+            return redirect("stock_receipt_detail", receipt_id=receipt.pk)
+        if units_per_pack != product.units_per_pack:
+            if not has_access(request.user, "edit_products"):
+                messages.error(request, "You do not have permission to change this product's pack size.")
+                return redirect("stock_receipt_detail", receipt_id=receipt.pk)
+            product.units_per_pack = units_per_pack
+            product.save(update_fields=["units_per_pack", "updated_at"])
+
+    quantity, pack_entry, quantity_error = _parse_receipt_quantity(request.POST, product.units_per_pack)
+    if quantity_error:
+        messages.error(request, quantity_error)
+        return redirect("stock_receipt_detail", receipt_id=receipt.pk)
 
     line, created = StockReceiptLine.objects.get_or_create(
         receipt=receipt,
         product=product,
         defaults={
             "quantity_received": quantity,
+            **pack_entry,
             "note": request.POST.get("note", "").strip()[:240],
             "entered_by": request.user,
         },
     )
     if not created:
         line.quantity_received += quantity
+        if (
+            line.count_entry_mode == "packs"
+            and pack_entry["count_entry_mode"] == "packs"
+            and line.units_per_pack_snapshot == pack_entry["units_per_pack_snapshot"]
+        ):
+            units = line.units_per_pack_snapshot
+            pack_total = (line.pack_count_entered or 0) + (pack_entry["pack_count_entered"] or 0)
+            loose_total = (line.loose_units_entered or 0) + (pack_entry["loose_units_entered"] or 0)
+            extra_packs, loose_total = divmod(loose_total, units)
+            line.pack_count_entered = pack_total + extra_packs
+            line.loose_units_entered = loose_total
+        else:
+            line.count_entry_mode = "units"
+            line.pack_count_entered = None
+            line.loose_units_entered = None
+            line.units_per_pack_snapshot = None
         note = request.POST.get("note", "").strip()
         if note:
             line.note = note[:240]
@@ -169,8 +263,9 @@ def receipt_add_line(request, receipt_id):
         line.approved_at = None
         line.entered_by = request.user
         line.save(update_fields=[
-            "quantity_received", "note", "status", "approved_quantity",
-            "approved_by", "approved_at", "entered_by", "updated_at",
+            "quantity_received", "count_entry_mode", "pack_count_entered",
+            "loose_units_entered", "units_per_pack_snapshot", "note", "status",
+            "approved_quantity", "approved_by", "approved_at", "entered_by", "updated_at",
         ])
 
     messages.success(

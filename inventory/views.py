@@ -57,19 +57,51 @@ def _cart(request):
     return request.session.setdefault("cart", {})
 
 
+def _cart_key(barcode, sale_unit="unit"):
+    return f"{barcode}::{sale_unit}"
+
+
+def _split_cart_key(key):
+    if "::" in key:
+        barcode, sale_unit = key.rsplit("::", 1)
+        return barcode, sale_unit if sale_unit in {"unit", "pack"} else "unit"
+    return key, "unit"
+
+
 def _cart_lines(cart):
-    products = Product.objects.filter(barcode__in=cart.keys(), is_active=True)
+    cart_rows = [(_split_cart_key(key), quantity, key) for key, quantity in cart.items()]
+    barcodes = {barcode for (barcode, _sale_unit), _quantity, _key in cart_rows}
+    products = Product.objects.filter(barcode__in=barcodes, is_active=True)
     product_map = {product.barcode: product for product in products}
     lines = []
     total = Decimal("0.00")
 
-    for barcode, quantity in cart.items():
+    for (barcode, sale_unit), sale_quantity, cart_key in cart_rows:
         product = product_map.get(barcode)
         if not product:
             continue
-        line_total = product.selling_price * quantity
+        if sale_unit == "pack":
+            if not product.units_per_pack:
+                continue
+            quantity = sale_quantity * product.units_per_pack
+            unit_price = product.effective_pack_selling_price
+            units_per_pack_snapshot = product.units_per_pack
+        else:
+            quantity = sale_quantity
+            unit_price = product.selling_price
+            units_per_pack_snapshot = None
+        line_total = unit_price * sale_quantity
         total += line_total
-        lines.append({"product": product, "quantity": quantity, "line_total": line_total})
+        lines.append({
+            "product": product,
+            "quantity": quantity,
+            "sale_quantity": sale_quantity,
+            "sale_unit": sale_unit,
+            "units_per_pack_snapshot": units_per_pack_snapshot,
+            "unit_price": unit_price,
+            "line_total": line_total,
+            "cart_key": cart_key,
+        })
 
     return lines, total
 
@@ -271,14 +303,21 @@ def pos_add(request):
         messages.error(request, "; ".join(error for errors in form.errors.values() for error in errors))
         return redirect("pos")
     barcode = form.cleaned_data["barcode"]
-    quantity = form.cleaned_data["quantity"]
+    sale_quantity = form.cleaned_data["quantity"]
+    sale_unit = form.cleaned_data.get("sale_unit") or "unit"
     product = Product.objects.get(barcode=barcode, is_active=True)
+    base_to_add = sale_quantity * product.units_per_pack if sale_unit == "pack" else sale_quantity
     cart = _cart(request)
-    next_quantity = cart.get(barcode, 0) + quantity
-    if next_quantity > product.stock_on_hand:
-        messages.error(request, f"Only {product.stock_on_hand} units of {product.name} are in stock.")
+    current_base = sum(
+        line["quantity"]
+        for line in _cart_lines(cart)[0]
+        if line["product"].barcode == barcode
+    )
+    if current_base + base_to_add > product.stock_on_hand:
+        messages.error(request, f"Only {product.stock_on_hand} base units of {product.name} are in stock.")
         return redirect("pos")
-    cart[barcode] = next_quantity
+    key = _cart_key(barcode, sale_unit)
+    cart[key] = cart.get(key, 0) + sale_quantity
     request.session.modified = True
     return redirect("pos")
 
@@ -314,16 +353,21 @@ def pos_checkout(request):
         messages.error(request, "; ".join(error for errors in form.errors.values() for error in errors))
         return redirect("pos")
 
-    barcodes = [line["product"].barcode for line in lines]
+    barcodes = {line["product"].barcode for line in lines}
     locked = Product.objects.select_for_update().in_bulk(barcodes, field_name="barcode")
 
+    requested_by_product = {}
     for line in lines:
         product = locked[line["product"].barcode]
         line["product"] = product
-        if line["quantity"] > product.stock_on_hand:
+        requested_by_product[product.barcode] = requested_by_product.get(product.barcode, 0) + line["quantity"]
+
+    for barcode, requested_quantity in requested_by_product.items():
+        product = locked[barcode]
+        if requested_quantity > product.stock_on_hand:
             messages.error(
                 request,
-                f"Not enough stock for {product.name}. Available: {product.stock_on_hand}.",
+                f"Not enough stock for {product.name}. Requested {requested_quantity}; available {product.stock_on_hand}.",
             )
             return redirect("pos")
 
@@ -364,14 +408,17 @@ def pos_checkout(request):
             sale=sale,
             product=product,
             quantity=quantity,
-            unit_price=product.selling_price,
+            sale_unit=line["sale_unit"],
+            sale_quantity=line["sale_quantity"],
+            units_per_pack_snapshot=line["units_per_pack_snapshot"],
+            unit_price=line["unit_price"],
             line_total=line["line_total"],
         )
         StockMovement.objects.create(
             product=product,
             movement_type=StockMovement.SALE,
             quantity=-quantity,
-            note=f"Sale #{sale.pk}",
+            note=f"Sale #{sale.pk} | {line['sale_quantity']} {line['sale_unit']}(s)",
         )
     request.session["cart"] = {}
     messages.success(request, f"Sale #{sale.pk} completed. Change: {sale.change_due}.")
@@ -450,18 +497,26 @@ def export_products_csv(request):
     header = ["Name", "Barcode", "Category"]
     if with_cost:
         header.append("Cost Price")
-    header.append("Selling Price")
+    header.extend(["Selling Price", "Units Per Pack", "Pack Selling Price"])
     if with_stock:
-        header.append("Stock")
+        header.extend(["Stock", "Full Packs", "Loose Units"])
     header.append("Reorder Level")
     writer.writerow(header)
     for product in Product.objects.select_related("category").with_stock():
         row = [product.name, product.barcode, product.category.name if product.category else ""]
         if with_cost:
             row.append(product.cost_price)
-        row.append(product.selling_price)
+        row.extend([
+            product.selling_price,
+            product.units_per_pack or "",
+            product.effective_pack_selling_price if product.units_per_pack else "",
+        ])
         if with_stock:
-            row.append(product.stock_on_hand)
+            row.extend([
+                product.stock_on_hand,
+                product.stock_pack_count if product.units_per_pack else "",
+                product.stock_loose_units if product.units_per_pack else "",
+            ])
         row.append(product.reorder_level)
         writer.writerow(row)
     return response
@@ -652,6 +707,8 @@ def api_product_search(request):
             "barcode": p.barcode,
             "variant": p.variant or "",
             "price": str(p.selling_price),
+            "units_per_pack": p.units_per_pack,
+            "pack_price": str(p.effective_pack_selling_price) if p.effective_pack_selling_price is not None else None,
             "stock": p.stock_on_hand,
             "image_url": p.image.url if p.image else None,
         })
@@ -670,6 +727,8 @@ def api_active_catalog(request):
             "barcode": p.barcode,
             "variant": p.variant or "",
             "price": float(p.selling_price),
+            "units_per_pack": p.units_per_pack,
+            "pack_price": float(p.effective_pack_selling_price) if p.effective_pack_selling_price is not None else None,
             "stock": p.stock_on_hand,
             "image_url": p.image.url if p.image else None,
             "category": p.category.name if p.category else "",

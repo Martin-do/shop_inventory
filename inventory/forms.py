@@ -24,7 +24,7 @@ class ProductForm(forms.ModelForm):
 
     class Meta:
         model = Product
-        fields = ["name", "variant", "barcode", "category", "cost_price", "selling_price", "reorder_level", "image", "is_active"]
+        fields = ["name", "variant", "barcode", "category", "cost_price", "selling_price", "units_per_pack", "pack_selling_price", "reorder_level", "image", "is_active"]
         widgets = {
             "name": forms.TextInput(attrs={"autofocus": True}),
             "barcode": forms.TextInput(attrs={"autocomplete": "off"}),
@@ -39,17 +39,23 @@ class ProductForm(forms.ModelForm):
         self.fields["cost_price"].required = False
         self.fields["cost_price"].label = "Cost Price (₦)"
         self.fields["selling_price"].label = "Selling Price (₦)"
+        self.fields["units_per_pack"].required = False
+        self.fields["units_per_pack"].label = "Units per pack (optional)"
+        self.fields["units_per_pack"].widget.attrs.update({"min": 2, "placeholder": "e.g. 10, 12, 24"})
+        self.fields["pack_selling_price"].required = False
+        self.fields["pack_selling_price"].label = "Pack Selling Price (₦, optional)"
+        self.fields["pack_selling_price"].widget.attrs.update({"min": 0, "step": "0.01", "placeholder": "Leave blank to use unit price × pack size"})
         if self.instance.pk:
             # Editing an existing product: opening stock only applies on create.
             self.fields.pop("opening_stock")
             self.fields["total_stock"].initial = self.instance.stock_on_hand
-            self.order_fields(["name", "variant", "barcode", "category", "new_category", "cost_price", "selling_price", "total_stock", "adjustment_note", "reorder_level", "image", "is_active"])
+            self.order_fields(["name", "variant", "barcode", "category", "new_category", "cost_price", "selling_price", "units_per_pack", "pack_selling_price", "total_stock", "adjustment_note", "reorder_level", "image", "is_active"])
         else:
             # Creating: new products are active by default; no toggle needed yet.
             self.fields.pop("is_active")
             self.fields.pop("total_stock")
             self.fields.pop("adjustment_note")
-            self.order_fields(["name", "variant", "barcode", "category", "new_category", "cost_price", "selling_price", "reorder_level", "image", "opening_stock"])
+            self.order_fields(["name", "variant", "barcode", "category", "new_category", "cost_price", "selling_price", "units_per_pack", "pack_selling_price", "reorder_level", "image", "opening_stock"])
         self._apply_field_permissions()
 
     def _apply_field_permissions(self):
@@ -67,6 +73,7 @@ class ProductForm(forms.ModelForm):
         # Selling price is needed to create a product, but changing it later is a pricing decision.
         if editing and not has_access(self.user, "change_selling_price"):
             self.fields["selling_price"].disabled = True
+            self.fields["pack_selling_price"].disabled = True
 
         can_change_cost = has_access(self.user, "change_cost_price")
         can_see_cost = can_change_cost or has_access(self.user, "view_cost_price")
@@ -110,6 +117,20 @@ class ProductForm(forms.ModelForm):
                     note=note,
                 )
         return product
+
+    def clean_units_per_pack(self):
+        value = self.cleaned_data.get("units_per_pack")
+        if value is not None and value < 2:
+            raise forms.ValidationError("Units per pack must be at least 2.")
+        return value
+
+    def clean(self):
+        cleaned_data = super().clean()
+        units_per_pack = cleaned_data.get("units_per_pack")
+        pack_price = cleaned_data.get("pack_selling_price")
+        if pack_price is not None and not units_per_pack:
+            self.add_error("pack_selling_price", "Set Units per pack before setting a pack selling price.")
+        return cleaned_data
 
     def clean_barcode(self):
         return self.cleaned_data["barcode"].strip()
@@ -176,6 +197,7 @@ class ReceiveStockForm(forms.Form):
 
 class AddToCartForm(forms.Form):
     barcode = forms.CharField(max_length=80)
+    sale_unit = forms.ChoiceField(choices=[("unit", "Unit"), ("pack", "Pack")], required=False, initial="unit")
     quantity = forms.IntegerField(min_value=1, initial=1)
 
     def clean_barcode(self):
@@ -183,6 +205,16 @@ class AddToCartForm(forms.Form):
         if not Product.objects.filter(barcode=barcode, is_active=True).exists():
             raise forms.ValidationError("No active product was found for this barcode.")
         return barcode
+
+    def clean(self):
+        cleaned_data = super().clean()
+        barcode = cleaned_data.get("barcode")
+        sale_unit = cleaned_data.get("sale_unit") or "unit"
+        if barcode and sale_unit == "pack":
+            product = Product.objects.filter(barcode=barcode, is_active=True).first()
+            if product and not product.units_per_pack:
+                self.add_error("sale_unit", "This product is not configured for pack sales.")
+        return cleaned_data
 
 
 class CheckoutForm(forms.Form):
