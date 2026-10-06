@@ -421,62 +421,73 @@
     saveCartState();
   });
 
+  function selectedSaleUnit() {
+    return document.getElementById("pos-sale-unit")?.value || "unit";
+  }
+
   function handleScanAdd() {
     const input = document.getElementById("barcode-input");
     const qtyInput = document.getElementById("pos-quantity-input");
     const barcode = input.value.trim();
     const qty = parseInt(qtyInput.value) || 1;
-
+    const saleUnit = selectedSaleUnit();
     if (!barcode) return;
 
-    // Lookup in local catalog first
     let product = productCatalog.find(p => p.barcode === barcode);
-
     if (!product) {
-      // Fallback: search backend if online
       if (navigator.onLine) {
         fetch(`/api/products/search/?q=${encodeURIComponent(barcode)}`)
           .then(res => res.json())
           .then(data => {
-            if (data.results && data.results.length > 0) {
-              const p = data.results[0];
-              addToCartFromObj(p, qty);
+            const exact = (data.results || []).find(p => p.barcode === barcode) || (data.results || [])[0];
+            if (!exact) { alert("No active product found for this barcode."); return; }
+            if (addToCartFromObj(exact, qty, saleUnit)) {
               input.value = "";
               qtyInput.value = "1";
-            } else {
-              alert("No active product found for this barcode.");
             }
           });
         return;
-      } else {
-        alert("Product not found in local offline catalog.");
-        return;
       }
+      alert("Product not found in local offline catalog.");
+      return;
     }
 
-    addToCartFromObj(product, qty);
-    input.value = "";
-    qtyInput.value = "1";
-    document.getElementById("search-suggestions").style.display = "none";
+    if (addToCartFromObj(product, qty, saleUnit)) {
+      input.value = "";
+      qtyInput.value = "1";
+      document.getElementById("search-suggestions").style.display = "none";
+    }
   }
 
-  function addToCartFromObj(product, qty) {
-    const existingIndex = localCart.findIndex(item => item.barcode === product.barcode);
-    const price = parseFloat(product.price);
-    const stock = product.stock !== undefined ? product.stock : 999;
+  function addToCartFromObj(product, qty, saleUnit="unit") {
+    qty = parseInt(qty, 10) || 1;
+    const unitsPerPack = parseInt(product.units_per_pack || 0, 10);
+    const stock = product.stock !== undefined ? parseInt(product.stock, 10) : 999;
+    if (saleUnit === "pack" && unitsPerPack < 2) {
+      alert(`${product.name} is not configured for pack sales. Set Units per pack on the product first.`);
+      return false;
+    }
+    const baseQuantity = saleUnit === "pack" ? qty * unitsPerPack : qty;
+    const price = saleUnit === "pack"
+      ? parseFloat(product.pack_price !== null && product.pack_price !== undefined ? product.pack_price : (parseFloat(product.price) * unitsPerPack))
+      : parseFloat(product.price);
+    const existingIndex = localCart.findIndex(item =>
+      item.barcode === product.barcode && (item.sale_unit || "unit") === saleUnit
+    );
+    const existingBase = existingIndex >= 0 ? cartBaseUnits(localCart[existingIndex]) : 0;
+    const combinedBase = baseUnitsInCartForBarcode(product.barcode, existingIndex) + existingBase + baseQuantity;
+    if (combinedBase > stock) {
+      alert(`Only ${stock} base units of ${product.name} are in stock.`);
+      return false;
+    }
 
     if (existingIndex >= 0) {
-      const currentQty = localCart[existingIndex].quantity;
-      if (currentQty + qty > stock) {
-        alert(`Only ${stock} units of ${product.name} are in stock.`);
-        return;
-      }
-      localCart[existingIndex].quantity += qty;
+      localCart[existingIndex].quantity = parseInt(localCart[existingIndex].quantity || 0, 10) + qty;
+      localCart[existingIndex].base_quantity = existingBase + baseQuantity;
+      localCart[existingIndex].price = price;
+      localCart[existingIndex].units_per_pack = unitsPerPack || null;
+      localCart[existingIndex].stock = stock;
     } else {
-      if (qty > stock) {
-        alert(`Only ${stock} units of ${product.name} are in stock.`);
-        return;
-      }
       localCart.push({
         id: product.id,
         barcode: product.barcode,
@@ -484,13 +495,16 @@
         variant: product.variant || "",
         price: price,
         quantity: qty,
+        sale_unit: saleUnit,
+        base_quantity: baseQuantity,
+        units_per_pack: unitsPerPack || null,
         stock: stock,
         image_url: product.image_url || null
       });
     }
-
     saveCartState();
     if (typeof playSound === 'function') playSound('success');
+    return true;
   }
 
   // --- SUMMARY CALCULATIONS ---
@@ -606,7 +620,7 @@
       tr.style.borderBottom = "1px dashed var(--line)";
       tr.innerHTML = `
         <td style="padding: 6px 0;">${esc(item.name)} ${item.variant ? `(${esc(item.variant)})` : ''}</td>
-        <td style="text-align: right; padding: 6px 0;">${item.quantity}</td>
+        <td style="text-align: right; padding: 6px 0;">${item.quantity} ${(item.sale_unit || "unit") === "pack" ? (item.quantity === 1 ? "pack" : "packs") : (item.quantity === 1 ? "unit" : "units")}</td>
         <td style="text-align: right; padding: 6px 0;">₦${lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
       `;
       modalBody.appendChild(tr);
@@ -652,8 +666,8 @@
       amount_paid: amountPaid,
       items: localCart.map(item => ({
         barcode: item.barcode,
-        quantity: item.quantity,
-        unit_price: item.price
+        sale_unit: item.sale_unit || "unit",
+        sale_quantity: parseInt(item.quantity || 0, 10)
       }))
     };
 
@@ -708,8 +722,8 @@
     // Deduct stock in cached catalog locally
     localCart.forEach(cartItem => {
       const catItem = productCatalog.find(p => p.barcode === cartItem.barcode);
-      if (catItem && catItem.stock) {
-        catItem.stock = Math.max(0, catItem.stock - cartItem.quantity);
+      if (catItem && catItem.stock !== undefined) {
+        catItem.stock = Math.max(0, catItem.stock - cartBaseUnits(cartItem));
       }
     });
     saveCatalogState();
@@ -771,16 +785,17 @@
       row.innerHTML = `
         <div>
           <span style="font-weight:600;">${esc(product.name)}</span> ${product.variant ? `<span style="font-size:12px; font-weight:600; color:var(--accent); background:var(--accent-tint); padding:2px 7px; border-radius:5px;">${esc(product.variant)}</span>` : ''}
-          <br><small style="color:var(--muted); font-size:12px;">Barcode: ${esc(product.barcode)} | Price: ₦${parseFloat(product.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Stock: ${product.stock}</small>
+          <br><small style="color:var(--muted); font-size:12px;">Barcode: ${esc(product.barcode)} | Unit: ₦${parseFloat(product.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Stock: ${product.stock}${product.units_per_pack ? " | Pack: " + product.units_per_pack + " units @ ₦" + parseFloat(product.pack_price ?? (parseFloat(product.price) * product.units_per_pack)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</small>
         </div>
         <button type="button" class="button primary" style="padding: 6px 12px; font-size: 12.5px; min-height: auto;">Select</button>
       `;
 
       row.addEventListener("click", () => {
         const qty = parseInt(document.getElementById("pos-quantity-input").value) || 1;
-        addToCartFromObj(product, qty);
-        barcodeInput.value = "";
-        suggestionsDiv.style.display = "none";
+        if (addToCartFromObj(product, qty, selectedSaleUnit())) {
+          barcodeInput.value = "";
+          suggestionsDiv.style.display = "none";
+        }
       });
 
       suggestionsDiv.appendChild(row);
