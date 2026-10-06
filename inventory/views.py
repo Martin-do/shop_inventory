@@ -652,6 +652,8 @@ def api_product_search(request):
             "barcode": p.barcode,
             "variant": p.variant or "",
             "price": str(p.selling_price),
+            "units_per_pack": p.units_per_pack,
+            "pack_price": str(p.effective_pack_selling_price) if p.effective_pack_selling_price is not None else None,
             "stock": p.stock_on_hand,
             "image_url": p.image.url if p.image else None,
         })
@@ -670,6 +672,8 @@ def api_active_catalog(request):
             "barcode": p.barcode,
             "variant": p.variant or "",
             "price": float(p.selling_price),
+            "units_per_pack": p.units_per_pack,
+            "pack_price": float(p.effective_pack_selling_price) if p.effective_pack_selling_price is not None else None,
             "stock": p.stock_on_hand,
             "image_url": p.image.url if p.image else None,
             "category": p.category.name if p.category else "",
