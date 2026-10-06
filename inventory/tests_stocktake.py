@@ -453,3 +453,75 @@ class OpeningStocktakeTests(TestCase):
         self.assertEqual(result["cost_price"], "2100.00")
         self.assertEqual(result["reorder_level"], 5)
         self.assertEqual(result["barcode_display"], "55500011")
+
+
+    def test_barcode_sized_quantity_is_rejected_before_count_is_saved(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        self.client.force_login(self.clerk)
+
+        response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": self.product.barcode,
+            "good_quantity": "189041857041300",
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(response.json()["barcode_like_quantity"])
+        self.assertIn("looks like a barcode scan", response.json()["error"])
+        self.assertFalse(StocktakeCount.objects.filter(product=self.product, zone=self.zone).exists())
+
+    def test_barcode_sized_quantity_is_rejected_when_creating_product_in_stocktake(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        self.client.force_login(self.clerk)
+
+        response = self.client.post(reverse("stocktake_quick_product", args=[self.zone.pk]), {
+            "barcode": "6151006000999",
+            "name": "Unsafe Count Test",
+            "selling_price": "100.00",
+            "good_quantity": "161540002401340",
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(response.json()["barcode_like_quantity"])
+        self.assertFalse(Product.objects.filter(name="Unsafe Count Test").exists())
+
+    def test_barcode_sized_quantity_is_rejected_when_editing_existing_count(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        count = StocktakeCount.objects.create(
+            session=self.session,
+            zone=self.zone,
+            product=self.product,
+            good_quantity=10,
+            approved_good_quantity=10,
+            counted_by=self.clerk,
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(reverse("stocktake_edit_record", args=[count.pk]), {
+            "name": self.product.name,
+            "barcode": self.product.barcode,
+            "selling_price": "1000.00",
+            "cost_price": "0.00",
+            "reorder_level": "5",
+            "good_quantity": "136151006000236",
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(response.json()["barcode_like_quantity"])
+        count.refresh_from_db()
+        self.assertEqual(count.good_quantity, 10)
+        self.assertEqual(count.approved_good_quantity, 10)
+
+    def test_stocktake_page_has_browser_side_quantity_guard(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        self.client.force_login(self.clerk)
+
+        response = self.client.get(reverse("stocktake_count_zone", args=[self.zone.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'max="9999"')
+        self.assertContains(response, "maxStocktakeQuantity=9999")
+        self.assertContains(response, "Barcode-like input detected in a quantity field")
