@@ -63,6 +63,7 @@ class Product(models.Model):
     selling_price = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
     reorder_level = models.PositiveIntegerField(default=5)
     units_per_pack = models.PositiveIntegerField(null=True, blank=True, validators=[MinValueValidator(2)], help_text="Optional. Number of individual sellable units in one full pack.")
+    pack_selling_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)], help_text="Optional. Price for one full pack; defaults to unit price multiplied by units per pack.")
     is_active = models.BooleanField(default=True)
     image = models.ImageField(upload_to="products/", blank=True, null=True)
     variant = models.CharField(max_length=80, blank=True, help_text="e.g. 1L, 1.5L, Pack of 6")
@@ -87,6 +88,22 @@ class Product(models.Model):
     @property
     def is_low_stock(self):
         return self.stock_on_hand <= self.reorder_level
+
+    @property
+    def effective_pack_selling_price(self):
+        if not self.units_per_pack:
+            return None
+        if self.pack_selling_price is not None:
+            return self.pack_selling_price
+        return self.selling_price * self.units_per_pack
+
+    @property
+    def stock_pack_count(self):
+        return self.stock_on_hand // self.units_per_pack if self.units_per_pack else None
+
+    @property
+    def stock_loose_units(self):
+        return self.stock_on_hand % self.units_per_pack if self.units_per_pack else None
 
 
 class StockMovement(models.Model):
@@ -157,6 +174,10 @@ class StockReceiptLine(models.Model):
     receipt = models.ForeignKey(StockReceipt, on_delete=models.CASCADE, related_name="lines")
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="receipt_lines")
     quantity_received = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    count_entry_mode = models.CharField(max_length=12, choices=[("units", "Total units"), ("packs", "Packs + loose units")], default="units")
+    pack_count_entered = models.PositiveIntegerField(null=True, blank=True)
+    loose_units_entered = models.PositiveIntegerField(null=True, blank=True)
+    units_per_pack_snapshot = models.PositiveIntegerField(null=True, blank=True)
     approved_quantity = models.PositiveIntegerField(null=True, blank=True)
     note = models.CharField(max_length=240, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
@@ -257,9 +278,18 @@ class Sale(models.Model):
 
 
 class SaleItem(models.Model):
+    SALE_UNIT = "unit"
+    SALE_PACK = "pack"
+    SALE_UNIT_CHOICES = [(SALE_UNIT, "Unit"), (SALE_PACK, "Pack")]
+
     sale = models.ForeignKey(Sale, related_name="items", on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.PROTECT)
+    # quantity always stores base inventory units deducted from stock.
     quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    sale_unit = models.CharField(max_length=8, choices=SALE_UNIT_CHOICES, default=SALE_UNIT)
+    sale_quantity = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1)])
+    units_per_pack_snapshot = models.PositiveIntegerField(null=True, blank=True)
+    # unit_price is price per sale unit: one loose unit or one full pack.
     unit_price = models.DecimalField(max_digits=12, decimal_places=2)
     line_total = models.DecimalField(max_digits=12, decimal_places=2)
 
