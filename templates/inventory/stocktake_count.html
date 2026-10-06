@@ -35,12 +35,18 @@
 .stock-entry-box{margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--panel)}
 .stock-entry-box h4{margin:0 0 4px;font-size:14px}
 .stock-entry-box .qty-grid{margin-top:10px}
-.pack-entry{margin:12px 0;padding:12px;border:1px dashed var(--line-strong);border-radius:var(--radius-md);background:var(--panel)}
+.pack-entry{margin:12px 0;padding:14px;border:1px solid var(--line-strong);border-radius:var(--radius-md);background:var(--panel)}
 .pack-entry[hidden]{display:none}
-.pack-fields{margin-top:10px}
+.pack-fields{margin-top:12px}
 .pack-fields[hidden]{display:none}
-.pack-total{margin:8px 0 0;font-weight:700}
+.pack-count-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+.pack-count-grid label{font-weight:700}
+.pack-total{margin:12px 0 0;padding:12px 14px;border-radius:10px;background:var(--accent-tint);border:1px solid #cde4dc}
+.pack-total strong{display:block;font-size:18px;margin-top:2px}
+.pack-calculation{display:block;margin-top:4px;color:var(--muted);font-size:12px;font-weight:600}
 .pack-equivalent{margin:8px 0 0;color:var(--muted);font-size:13px}
+.unit-total-field[hidden]{display:none}
+@media(max-width:620px){.pack-count-grid{grid-template-columns:1fr}}
 .suggest-wrap{position:relative}
 .suggest-menu{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;background:var(--panel);border:1px solid var(--line-strong);border-radius:var(--radius-md);box-shadow:var(--shadow-card);max-height:230px;overflow:auto;padding:4px}
 .suggest-menu[hidden]{display:none}
@@ -69,17 +75,26 @@
 <div class="new-product-actions"><button class="button" type="button" id="open-product-form">+ Add a new product</button></div>
 <div id="product-result"></div>
 <div class="pack-entry" data-pack-counter hidden>
-  <div class="details-grid">
-    <div><label>Count sellable stock as</label><select name="count_entry_mode"><option value="units">Total units</option><option value="packs">Packs + loose units</option></select></div>
-    <div data-pack-size-wrap><label>Units per pack <span class="muted">(optional)</span></label><input name="units_per_pack" type="number" min="2" inputmode="numeric" placeholder="e.g. 10 or 12"></div>
-  </div>
+  <label>How are you counting the sellable stock?</label>
+  <select name="count_entry_mode">
+    <option value="units">Enter total individual units</option>
+    <option value="packs">Enter pack breakdown</option>
+  </select>
   <div class="pack-fields" data-pack-fields hidden>
-    <div class="qty-grid"><div><label>Full packs</label><input name="pack_count" type="number" min="0" value="0" max="9999" inputmode="numeric"></div><div><label>Loose units</label><input name="loose_units" type="number" min="0" value="0" max="9999" inputmode="numeric"></div></div>
-    <p class="pack-total" data-pack-total>0 packs + 0 loose = 0 units</p>
+    <div class="pack-count-grid">
+      <div data-pack-size-wrap><label>How many units are in one full pack?</label><input name="units_per_pack" type="number" min="2" inputmode="numeric" placeholder="e.g. 10 or 12"></div>
+      <div><label>How many full packs?</label><input name="pack_count" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
+      <div><label>How many loose units?</label><input name="loose_units" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
+    </div>
+    <div class="pack-total" data-pack-total>
+      <span>TOTAL SELLABLE STOCK</span>
+      <strong>0 units</strong>
+      <span class="pack-calculation">Enter the pack size, full packs and loose units.</span>
+    </div>
   </div>
   <p class="pack-equivalent" data-pack-equivalent hidden></p>
 </div>
-<div class="qty-grid"><div><label>Good / sellable</label><input id="good-quantity" type="number" min="0" name="good_quantity" value="0" max="9999" inputmode="numeric"></div><div><label>Damaged</label><input type="number" min="0" name="damaged_quantity" value="0" max="9999" inputmode="numeric"></div><div><label>Expired</label><input type="number" min="0" name="expired_quantity" value="0" max="9999" inputmode="numeric"></div><div><label>Reserved</label><input type="number" min="0" name="reserved_quantity" value="0" max="9999" inputmode="numeric"></div></div>
+<div class="qty-grid"><div class="unit-total-field" data-unit-total-field><label>Total sellable units</label><input id="good-quantity" type="number" min="0" name="good_quantity" value="0" max="9999" inputmode="numeric"></div><div><label>Damaged</label><input type="number" min="0" name="damaged_quantity" value="0" max="9999" inputmode="numeric"></div><div><label>Expired</label><input type="number" min="0" name="expired_quantity" value="0" max="9999" inputmode="numeric"></div><div><label>Reserved</label><input type="number" min="0" name="reserved_quantity" value="0" max="9999" inputmode="numeric"></div></div>
 <label>Note</label><input name="note" placeholder="Optional observation">
 <button class="button primary" id="save-count" style="width:100%;margin-top:12px;min-height:50px;font-size:15px">Save count</button>
 </form>
@@ -100,21 +115,28 @@
 </div>
 <div class="details-grid"><div><label>Selling price</label><input name="selling_price" type="number" min="0" step="0.01" value="0"></div><div><label>Cost price</label><input name="cost_price" type="number" min="0" step="0.01" value="0"></div></div>
 <label>Low-stock alert level</label><input name="reorder_level" type="number" min="0" value="5">
-<label>Units per pack <span class="muted">(optional)</span></label><input name="units_per_pack" type="number" min="2" inputmode="numeric" placeholder="e.g. 10 or 12">
-<label>Pack selling price <span class="muted">(optional)</span></label><input name="pack_selling_price" type="number" min="0" step="0.01" placeholder="Defaults to unit price × pack size">
-<p class="form-note">Leave pack fields blank for products that are not normally sold in packs.</p>
+<label>Pack selling price <span class="muted">(optional)</span></label><input name="pack_selling_price" type="number" min="0" step="0.01" placeholder="Only used if this product is sold by full pack">
+<p class="form-note">If you count this product by packs below, enter how many units are in one full pack there. Leave pack selling price blank to use unit price × pack size.</p>
 <div class="stock-entry-box">
 <h4>Opening stock quantities</h4>
 <p class="form-note">Enter the physical stock available now. Sellable stock becomes the product's usable balance only after this stocktake is reviewed and applied.</p>
 <div class="pack-entry" data-pack-counter>
-  <label>Count sellable stock as</label><select name="count_entry_mode"><option value="units">Total units</option><option value="packs">Packs + loose units</option></select>
+  <label>How are you counting the sellable stock?</label>
+  <select name="count_entry_mode">
+    <option value="units">Enter total individual units</option>
+    <option value="packs">Enter pack breakdown</option>
+  </select>
   <div class="pack-fields" data-pack-fields hidden>
-    <div class="qty-grid"><div><label>Full packs</label><input name="pack_count" type="number" min="0" value="0" max="9999" inputmode="numeric"></div><div><label>Loose units</label><input name="loose_units" type="number" min="0" value="0" max="9999" inputmode="numeric"></div></div>
-    <p class="pack-total" data-pack-total>0 packs + 0 loose = 0 units</p>
+    <div class="pack-count-grid">
+      <div><label>How many units are in one full pack?</label><input name="units_per_pack" type="number" min="2" inputmode="numeric" placeholder="e.g. 10 or 12"></div>
+      <div><label>How many full packs?</label><input name="pack_count" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
+      <div><label>How many loose units?</label><input name="loose_units" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
+    </div>
+    <div class="pack-total" data-pack-total><span>TOTAL SELLABLE STOCK</span><strong>0 units</strong><span class="pack-calculation">Enter the pack size, full packs and loose units.</span></div>
   </div>
 </div>
 <div class="qty-grid">
-<div><label>Available / sellable stock</label><input name="good_quantity" type="number" min="0" value="0" required max="9999" inputmode="numeric"></div>
+<div class="unit-total-field" data-unit-total-field><label>Total sellable units</label><input name="good_quantity" type="number" min="0" value="0" required max="9999" inputmode="numeric"></div>
 <div><label>Damaged stock</label><input name="damaged_quantity" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
 <div><label>Expired stock</label><input name="expired_quantity" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
 <div><label>Reserved stock</label><input name="reserved_quantity" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
@@ -136,18 +158,25 @@
 <div class="details-grid"><div><label>Variant / size</label><div class="suggest-wrap"><input name="variant" data-suggest-field="variant" autocomplete="off"><div class="suggest-menu" data-suggest-menu="variant" hidden></div></div></div><div><label>Category</label><div class="suggest-wrap"><input name="category" data-suggest-field="category" autocomplete="off"><div class="suggest-menu" data-suggest-menu="category" hidden></div></div></div></div>
 <div class="details-grid"><div><label>Selling price</label><input name="selling_price" type="number" min="0" step="0.01"></div><div id="full-cost-field"><label>Cost price</label><input name="cost_price" type="number" min="0" step="0.01"></div></div>
 <label>Low-stock alert level</label><input name="reorder_level" type="number" min="0">
-<label>Units per pack <span class="muted">(optional)</span></label><input name="units_per_pack" type="number" min="2" inputmode="numeric" placeholder="e.g. 10 or 12">
-<label>Pack selling price <span class="muted">(optional)</span></label><input name="pack_selling_price" type="number" min="0" step="0.01" placeholder="Defaults to unit price × pack size">
+<label>Pack selling price <span class="muted">(optional)</span></label><input name="pack_selling_price" type="number" min="0" step="0.01" placeholder="Only used if this product is sold by full pack">
 <div class="stock-entry-box"><h4>Stocktake quantities</h4>
 <div class="pack-entry" data-pack-counter>
-  <label>Count sellable stock as</label><select name="count_entry_mode"><option value="units">Total units</option><option value="packs">Packs + loose units</option></select>
+  <label>How are you counting the sellable stock?</label>
+  <select name="count_entry_mode">
+    <option value="units">Enter total individual units</option>
+    <option value="packs">Enter pack breakdown</option>
+  </select>
   <div class="pack-fields" data-pack-fields hidden>
-    <div class="qty-grid"><div><label>Full packs</label><input name="pack_count" type="number" min="0" value="0" max="9999" inputmode="numeric"></div><div><label>Loose units</label><input name="loose_units" type="number" min="0" value="0" max="9999" inputmode="numeric"></div></div>
-    <p class="pack-total" data-pack-total>0 packs + 0 loose = 0 units</p>
+    <div class="pack-count-grid">
+      <div><label>How many units are in one full pack?</label><input name="units_per_pack" type="number" min="2" inputmode="numeric" placeholder="e.g. 10 or 12"></div>
+      <div><label>How many full packs?</label><input name="pack_count" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
+      <div><label>How many loose units?</label><input name="loose_units" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
+    </div>
+    <div class="pack-total" data-pack-total><span>TOTAL SELLABLE STOCK</span><strong>0 units</strong><span class="pack-calculation">Enter the pack size, full packs and loose units.</span></div>
   </div>
   <p class="pack-equivalent" data-pack-equivalent hidden></p>
 </div>
-<div class="qty-grid"><div><label>Available / sellable</label><input name="good_quantity" type="number" min="0" required max="9999" inputmode="numeric"></div><div><label>Damaged</label><input name="damaged_quantity" type="number" min="0" max="9999" inputmode="numeric"></div><div><label>Expired</label><input name="expired_quantity" type="number" min="0" max="9999" inputmode="numeric"></div><div><label>Reserved</label><input name="reserved_quantity" type="number" min="0" max="9999" inputmode="numeric"></div></div><label>Stock note</label><input name="note" maxlength="240"></div>
+<div class="qty-grid"><div class="unit-total-field" data-unit-total-field><label>Total sellable units</label><input name="good_quantity" type="number" min="0" required max="9999" inputmode="numeric"></div><div><label>Damaged</label><input name="damaged_quantity" type="number" min="0" max="9999" inputmode="numeric"></div><div><label>Expired</label><input name="expired_quantity" type="number" min="0" max="9999" inputmode="numeric"></div><div><label>Reserved</label><input name="reserved_quantity" type="number" min="0" max="9999" inputmode="numeric"></div></div><label>Stock note</label><input name="note" maxlength="240"></div>
 <button class="button primary" style="width:100%;margin-top:10px">Save full record</button>
 </form>
 </div>
@@ -181,37 +210,39 @@
    const unitsInput=targetForm.querySelector('[name=units_per_pack]');
    const fields=targetForm.querySelector('[data-pack-fields]');
    const totalLabel=targetForm.querySelector('[data-pack-total]');
+   const unitTotalField=targetForm.querySelector('[data-unit-total-field]');
    const good=targetForm.querySelector('[name=good_quantity]');
    if(!mode||!fields||!good)return true;
    const usingPacks=mode.value==='packs';
    fields.hidden=!usingPacks;
+   if(unitTotalField)unitTotalField.hidden=usingPacks;
    good.readOnly=usingPacks;
    if(!usingPacks)return true;
    const units=Number((unitsInput&&unitsInput.value)||0);
    const packs=Number((targetForm.querySelector('[name=pack_count]')||{}).value||0);
    const loose=Number((targetForm.querySelector('[name=loose_units]')||{}).value||0);
    if(!Number.isInteger(units)||units<2){
-     if(totalLabel)totalLabel.textContent='Set units per pack to use pack counting.';
+     if(totalLabel)totalLabel.innerHTML='<span>TOTAL SELLABLE STOCK</span><strong>—</strong><span class="pack-calculation">Enter how many units are in one full pack.</span>';
      return false;
    }
    if(!Number.isInteger(packs)||packs<0||!Number.isInteger(loose)||loose<0){
-     if(totalLabel)totalLabel.textContent='Pack count and loose units must be non-negative whole numbers.';
+     if(totalLabel)totalLabel.innerHTML='<span>TOTAL SELLABLE STOCK</span><strong>—</strong><span class="pack-calculation">Full packs and loose units must be whole numbers.</span>';
      return false;
    }
    if(loose>=units){
-     if(totalLabel)totalLabel.textContent='Loose units must be fewer than '+units+'.';
+     if(totalLabel)totalLabel.innerHTML='<span>TOTAL SELLABLE STOCK</span><strong>—</strong><span class="pack-calculation">Loose units must be fewer than '+units+'. Move a full '+units+' into the pack count.</span>';
      return false;
    }
    const total=(packs*units)+loose;
    good.value=total;
-   if(totalLabel)totalLabel.textContent=packs+' pack'+(packs===1?'':'s')+' × '+units+' + '+loose+' loose = '+total+' units';
+   if(totalLabel)totalLabel.innerHTML='<span>TOTAL SELLABLE STOCK</span><strong>'+total+' units</strong><span class="pack-calculation">'+packs+' pack'+(packs===1?'':'s')+' × '+units+' units + '+loose+' loose = '+total+' units</span>';
    return total<=maxStocktakeQuantity;
  }
  function validatePackCounter(targetForm){
    const mode=targetForm.querySelector('[name=count_entry_mode]');
    if(!mode||mode.value!=='packs')return true;
    if(!updatePackCounter(targetForm)){
-     toast('Check the pack size, pack count and loose units before saving.','error');
+     toast('Enter the units in one pack, number of full packs and loose units before saving.','error');
      const units=targetForm.querySelector('[name=units_per_pack]');
      if(units&&!units.disabled)units.focus();
      return false;
