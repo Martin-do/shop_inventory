@@ -62,7 +62,7 @@
 </div>
 <div class="new-product-actions"><button class="button" type="button" id="open-product-form">+ Add a new product</button></div>
 <div id="product-result"></div>
-<div class="qty-grid"><div><label>Good / sellable</label><input id="good-quantity" type="number" min="0" name="good_quantity" value="0"></div><div><label>Damaged</label><input type="number" min="0" name="damaged_quantity" value="0"></div><div><label>Expired</label><input type="number" min="0" name="expired_quantity" value="0"></div><div><label>Reserved</label><input type="number" min="0" name="reserved_quantity" value="0"></div></div>
+<div class="qty-grid"><div><label>Good / sellable</label><input id="good-quantity" type="number" min="0" name="good_quantity" value="0" max="9999" inputmode="numeric"></div><div><label>Damaged</label><input type="number" min="0" name="damaged_quantity" value="0" max="9999" inputmode="numeric"></div><div><label>Expired</label><input type="number" min="0" name="expired_quantity" value="0" max="9999" inputmode="numeric"></div><div><label>Reserved</label><input type="number" min="0" name="reserved_quantity" value="0" max="9999" inputmode="numeric"></div></div>
 <label>Note</label><input name="note" placeholder="Optional observation">
 <button class="button primary" id="save-count" style="width:100%;margin-top:12px;min-height:50px;font-size:15px">Save count</button>
 </form>
@@ -87,10 +87,10 @@
 <h4>Opening stock quantities</h4>
 <p class="form-note">Enter the physical stock available now. Sellable stock becomes the product's usable balance only after this stocktake is reviewed and applied.</p>
 <div class="qty-grid">
-<div><label>Available / sellable stock</label><input name="good_quantity" type="number" min="0" value="0" required></div>
-<div><label>Damaged stock</label><input name="damaged_quantity" type="number" min="0" value="0"></div>
-<div><label>Expired stock</label><input name="expired_quantity" type="number" min="0" value="0"></div>
-<div><label>Reserved stock</label><input name="reserved_quantity" type="number" min="0" value="0"></div>
+<div><label>Available / sellable stock</label><input name="good_quantity" type="number" min="0" value="0" required max="9999" inputmode="numeric"></div>
+<div><label>Damaged stock</label><input name="damaged_quantity" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
+<div><label>Expired stock</label><input name="expired_quantity" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
+<div><label>Reserved stock</label><input name="reserved_quantity" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
 </div>
 <label>Stock note</label><input name="note" maxlength="240" placeholder="Optional note about this opening count">
 </div>
@@ -109,7 +109,7 @@
 <div class="details-grid"><div><label>Variant / size</label><div class="suggest-wrap"><input name="variant" data-suggest-field="variant" autocomplete="off"><div class="suggest-menu" data-suggest-menu="variant" hidden></div></div></div><div><label>Category</label><div class="suggest-wrap"><input name="category" data-suggest-field="category" autocomplete="off"><div class="suggest-menu" data-suggest-menu="category" hidden></div></div></div></div>
 <div class="details-grid"><div><label>Selling price</label><input name="selling_price" type="number" min="0" step="0.01"></div><div id="full-cost-field"><label>Cost price</label><input name="cost_price" type="number" min="0" step="0.01"></div></div>
 <label>Low-stock alert level</label><input name="reorder_level" type="number" min="0">
-<div class="stock-entry-box"><h4>Stocktake quantities</h4><div class="qty-grid"><div><label>Available / sellable</label><input name="good_quantity" type="number" min="0" required></div><div><label>Damaged</label><input name="damaged_quantity" type="number" min="0"></div><div><label>Expired</label><input name="expired_quantity" type="number" min="0"></div><div><label>Reserved</label><input name="reserved_quantity" type="number" min="0"></div></div><label>Stock note</label><input name="note" maxlength="240"></div>
+<div class="stock-entry-box"><h4>Stocktake quantities</h4><div class="qty-grid"><div><label>Available / sellable</label><input name="good_quantity" type="number" min="0" required max="9999" inputmode="numeric"></div><div><label>Damaged</label><input name="damaged_quantity" type="number" min="0" max="9999" inputmode="numeric"></div><div><label>Expired</label><input name="expired_quantity" type="number" min="0" max="9999" inputmode="numeric"></div><div><label>Reserved</label><input name="reserved_quantity" type="number" min="0" max="9999" inputmode="numeric"></div></div><label>Stock note</label><input name="note" maxlength="240"></div>
 <button class="button primary" style="width:100%;margin-top:10px">Save full record</button>
 </form>
 </div>
@@ -121,6 +121,23 @@
  const form=document.getElementById('count-form'), barcode=document.getElementById('barcode'), result=document.getElementById('product-result'), unknown=document.getElementById('unknown-card'), newBarcode=document.getElementById('new-barcode'), newName=document.getElementById('new-name'), video=document.getElementById('camera');
  const csrf=form.querySelector('[name=csrfmiddlewaretoken]').value; let stream=null, detector=null, scanning=false, scanLock=false, lastCode='', lastAt=0, productReady=false;
  const toast=(m,t='info')=>window.shopToast?window.shopToast(m,t):console.log(m);
+ const maxStocktakeQuantity=9999;
+ const quantitySelector='input[name=good_quantity],input[name=damaged_quantity],input[name=expired_quantity],input[name=reserved_quantity]';
+ function validateStocktakeQuantities(targetForm){
+   for(const input of targetForm.querySelectorAll(quantitySelector)){
+     const raw=(input.value||'0').trim();
+     const value=Number(raw||0);
+     if(!/^\d+$/.test(raw||'0')||!Number.isSafeInteger(value)||value<0){
+       toast('Stock quantities must be non-negative whole numbers.','error');
+       input.focus();input.select();return false;
+     }
+     if(value>maxStocktakeQuantity){
+       toast('That quantity is too large and looks like a barcode scan. Nothing was saved. Scan products in the barcode field.','error');
+       input.focus();input.select();return false;
+     }
+   }
+   return true;
+ }
  const suggestionUrl='{% url "stocktake_product_search" %}';
  const editRecordUrlTemplate='{% url "stocktake_edit_record" 0 %}';
  const fullEditCard=document.getElementById('full-edit-card'), fullEditForm=document.getElementById('full-edit-form');
@@ -269,8 +286,17 @@
    const left=document.createElement('span');left.className='recent-main';const strong=document.createElement('strong');strong.textContent=j.product;left.append(strong);if(j.variant){const variant=document.createElement('span');variant.className='muted';variant.textContent=' ('+j.variant+')';left.append(variant);}left.append(document.createElement('br'));const small=document.createElement('small');small.textContent=[j.barcode_display||j.barcode,j.category||''].filter(Boolean).join(' · ');left.append(small);
    const actions=document.createElement('span');actions.className='recent-actions';const qty=document.createElement('strong');qty.className='recent-qty';qty.textContent=j.quantities.good_quantity;const edit=document.createElement('button');edit.type='button';edit.className='button edit-count';edit.dataset.barcode=j.barcode;edit.textContent='Edit';actions.append(qty,edit);row.append(left,actions);list.prepend(row);filterCountedProducts();
  }
- async function saveCount(){if(!productReady){const found=await lookupProduct();if(!found)return;}const updating=document.getElementById('save-count').textContent==='Update count';const data=new FormData(form);const r=await fetch('{% url "stocktake_save_count" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:data});const j=await r.json();if(r.status===404&&j.unknown){showProductForm(j.barcode);return;}if(!r.ok){toast(j.error||'Could not save count','error');return;}toast((updating?'Count updated for ':'Count saved for ')+j.product,'success');addRecentRow(j);setCountFields(null);barcode.value='';result.textContent='';result.className='';productReady=false;barcode.focus();}
+ async function saveCount(){if(!validateStocktakeQuantities(form))return;if(!productReady){const found=await lookupProduct();if(!found)return;}const updating=document.getElementById('save-count').textContent==='Update count';const data=new FormData(form);const r=await fetch('{% url "stocktake_save_count" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:data});const j=await r.json();if(r.status===404&&j.unknown){showProductForm(j.barcode);return;}if(!r.ok){toast(j.error||'Could not save count','error');return;}toast((updating?'Count updated for ':'Count saved for ')+j.product,'success');addRecentRow(j);setCountFields(null);barcode.value='';result.textContent='';result.className='';productReady=false;barcode.focus();}
  form.addEventListener('submit',e=>{e.preventDefault();saveCount().catch(()=>toast('Network error while saving','error'));});document.getElementById('lookup').onclick=()=>lookupProduct();barcode.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();lookupProduct();}});
+ document.addEventListener('keydown',e=>{
+   if(e.key!=='Enter'||!e.target.matches(quantitySelector))return;
+   const value=Number(e.target.value||0);
+   if(value>maxStocktakeQuantity){
+     e.preventDefault();e.stopPropagation();
+     toast('Barcode-like input detected in a quantity field. Nothing was saved.','error');
+     e.target.focus();e.target.select();
+   }
+ });
  async function openFullEditor(code){
    const data=new FormData();data.append('barcode',code);data.append('lookup_only','1');data.append('csrfmiddlewaretoken',csrf);
    const r=await fetch('{% url "stocktake_save_count" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:data});const j=await r.json();
@@ -307,7 +333,7 @@
  document.getElementById('close-full-edit').onclick=()=>{fullEditCard.hidden=true;};
  document.getElementById('use-live-stock').onclick=e=>{fullEditForm.querySelector('[name=good_quantity]').value=e.currentTarget.dataset.liveStock||0;};
  fullEditForm.addEventListener('submit',async e=>{
-   e.preventDefault();const countId=fullEditForm.querySelector('[name=count_id]').value;if(!countId)return;
+   e.preventDefault();if(!validateStocktakeQuantities(fullEditForm))return;const countId=fullEditForm.querySelector('[name=count_id]').value;if(!countId)return;
    const url=editRecordUrlTemplate.replace('/0/','/'+countId+'/');
    const originalBarcode=fullEditForm.dataset.originalBarcode;
    const r=await fetch(url,{method:'POST',headers:{'X-CSRFToken':csrf},body:new FormData(fullEditForm)});const j=await r.json();
@@ -316,7 +342,7 @@
    addRecentRow(j);fullEditCard.hidden=true;toast('Full record updated for '+j.product,'success');
  });
  document.getElementById('open-product-form').onclick=()=>showProductForm(barcode.value.trim());document.getElementById('close-product-form').onclick=()=>{unknown.hidden=true;};
- document.getElementById('product-form').addEventListener('submit',async e=>{e.preventDefault();const r=await fetch('{% url "stocktake_quick_product" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:new FormData(e.target)});const j=await r.json();if(!r.ok){toast(j.error||'Could not create product','error');return;}addRecentRow(j);toast(j.product+' created and opening stock saved.','success');e.target.reset();e.target.querySelector('[name=reorder_level]').value=5;unknown.hidden=true;barcode.value='';result.textContent='';result.className='';productReady=false;barcode.focus();});
+ document.getElementById('product-form').addEventListener('submit',async e=>{e.preventDefault();if(!validateStocktakeQuantities(e.target))return;const r=await fetch('{% url "stocktake_quick_product" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:new FormData(e.target)});const j=await r.json();if(!r.ok){toast(j.error||'Could not create product','error');return;}addRecentRow(j);toast(j.product+' created and opening stock saved.','success');e.target.reset();e.target.querySelector('[name=reorder_level]').value=5;unknown.hidden=true;barcode.value='';result.textContent='';result.className='';productReady=false;barcode.focus();});
  async function acceptCode(code){const now=Date.now();if(scanLock||(code===lastCode&&now-lastAt<1800))return;scanLock=true;lastCode=code;lastAt=now;barcode.value=code;productReady=false;toast('Barcode detected','success');if(navigator.vibrate)navigator.vibrate(80);await lookupProduct();setTimeout(()=>{scanLock=false},500);}
  async function loop(){if(!scanning||!detector)return;try{const codes=await detector.detect(video);if(codes.length)await acceptCode(codes[0].rawValue);}catch(e){}requestAnimationFrame(loop);}
  document.getElementById('start-camera').onclick=async()=>{if(!window.isSecureContext){toast('Live camera scanning requires HTTPS. This local IP connection can still use manual or Bluetooth scanner entry.','error');return;}if(!('BarcodeDetector'in window)){toast('This Chrome version does not provide BarcodeDetector. Use photo or manual entry.','error');return;}try{detector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']});stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});video.srcObject=stream;await video.play();scanning=true;document.getElementById('start-camera').disabled=true;document.getElementById('stop-camera').disabled=false;loop();}catch(e){toast('Camera permission was denied or no camera is available.','error');}};
