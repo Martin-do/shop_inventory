@@ -70,36 +70,77 @@ def api_sync_offline(request):
                     })
                     continue
 
-                requested = {}
+                requested_items = []
+                barcodes = set()
                 for item in items_data:
                     barcode = str(item.get("barcode", "")).strip()
+                    sale_unit = str(item.get("sale_unit", item.get("sale_mode", "unit")) or "unit").strip().lower()
+                    if sale_unit not in {SaleItem.SALE_UNIT, SaleItem.SALE_PACK}:
+                        raise ValueError(f"Invalid sale unit for barcode '{barcode}'.")
+                    raw_sale_quantity = item.get("sale_quantity", item.get("quantity", 0))
                     try:
-                        quantity = int(item.get("quantity", 0))
+                        sale_quantity = int(raw_sale_quantity)
                     except (TypeError, ValueError):
                         raise ValueError(f"Invalid quantity for barcode '{barcode}'.")
-                    if not barcode or quantity < 1:
+                    if not barcode or sale_quantity < 1:
                         raise ValueError("Every item requires a barcode and quantity of at least 1.")
-                    requested[barcode] = requested.get(barcode, 0) + quantity
+                    requested_items.append({
+                        "barcode": barcode,
+                        "sale_unit": sale_unit,
+                        "sale_quantity": sale_quantity,
+                    })
+                    barcodes.add(barcode)
 
                 products = {
                     product.barcode: product
-                    for product in Product.objects.select_for_update().filter(barcode__in=requested.keys(), is_active=True)
+                    for product in Product.objects.select_for_update().filter(barcode__in=barcodes, is_active=True)
                 }
-                missing = sorted(set(requested) - set(products))
+                missing = sorted(barcodes - set(products))
                 if missing:
                     raise ValueError(f"Product not found or inactive: {', '.join(missing)}")
 
                 lines = []
                 subtotal = Decimal("0.00")
-                for barcode, quantity in requested.items():
+                requested_base_units = {}
+                for requested in requested_items:
+                    product = products[requested["barcode"]]
+                    sale_unit = requested["sale_unit"]
+                    sale_quantity = requested["sale_quantity"]
+
+                    if sale_unit == SaleItem.SALE_PACK:
+                        if not product.units_per_pack:
+                            raise ValueError(f"{product.name} is not configured for pack sales.")
+                        base_quantity = sale_quantity * product.units_per_pack
+                        unit_price = product.effective_pack_selling_price
+                        units_per_pack_snapshot = product.units_per_pack
+                    else:
+                        base_quantity = sale_quantity
+                        unit_price = product.selling_price
+                        units_per_pack_snapshot = None
+
+                    line_total = unit_price * sale_quantity
+                    subtotal += line_total
+                    requested_base_units[product.barcode] = (
+                        requested_base_units.get(product.barcode, 0) + base_quantity
+                    )
+                    lines.append({
+                        "product": product,
+                        "quantity": base_quantity,
+                        "sale_unit": sale_unit,
+                        "sale_quantity": sale_quantity,
+                        "units_per_pack_snapshot": units_per_pack_snapshot,
+                        "unit_price": unit_price,
+                        "line_total": line_total,
+                    })
+
+                for barcode, base_quantity in requested_base_units.items():
                     product = products[barcode]
                     available = product.stock_on_hand
-                    if quantity > available:
-                        raise ValueError(f"Insufficient stock for {product.name}. Requested {quantity}; available {available}.")
-                    unit_price = product.selling_price
-                    line_total = unit_price * quantity
-                    subtotal += line_total
-                    lines.append((product, quantity, unit_price, line_total))
+                    if base_quantity > available:
+                        raise ValueError(
+                            f"Insufficient stock for {product.name}. "
+                            f"Requested {base_quantity} base units; available {available}."
+                        )
 
                 discount_amount = _money(sale_data.get("discount_amount", 0), "discount amount")
                 if discount_amount < 0 or discount_amount > subtotal:
@@ -135,20 +176,29 @@ def api_sync_offline(request):
                     tax_amount=tax_amount,
                 )
 
-                for product, quantity, unit_price, line_total in lines:
+                for line in lines:
+                    product = line["product"]
                     SaleItem.objects.create(
                         sale=sale,
                         product=product,
-                        quantity=quantity,
-                        unit_price=unit_price,
-                        line_total=line_total,
+                        quantity=line["quantity"],
+                        sale_unit=line["sale_unit"],
+                        sale_quantity=line["sale_quantity"],
+                        units_per_pack_snapshot=line["units_per_pack_snapshot"],
+                        unit_price=line["unit_price"],
+                        line_total=line["line_total"],
+                    )
+                    sale_description = (
+                        f'{line["sale_quantity"]} pack(s)'
+                        if line["sale_unit"] == SaleItem.SALE_PACK
+                        else f'{line["sale_quantity"]} unit(s)'
                     )
                     StockMovement.objects.create(
                         product=product,
                         actor=request.user,
                         movement_type=StockMovement.SALE,
-                        quantity=-quantity,
-                        note=f"Offline Sale #{sale.pk} ({temp_receipt})"[:240],
+                        quantity=-line["quantity"],
+                        note=f"Sale #{sale.pk} ({temp_receipt}) | {sale_description}"[:240],
                     )
 
                 log_event(
