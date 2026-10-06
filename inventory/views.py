@@ -497,18 +497,26 @@ def export_products_csv(request):
     header = ["Name", "Barcode", "Category"]
     if with_cost:
         header.append("Cost Price")
-    header.append("Selling Price")
+    header.extend(["Selling Price", "Units Per Pack", "Pack Selling Price"])
     if with_stock:
-        header.append("Stock")
+        header.extend(["Stock", "Full Packs", "Loose Units"])
     header.append("Reorder Level")
     writer.writerow(header)
     for product in Product.objects.select_related("category").with_stock():
         row = [product.name, product.barcode, product.category.name if product.category else ""]
         if with_cost:
             row.append(product.cost_price)
-        row.append(product.selling_price)
+        row.extend([
+            product.selling_price,
+            product.units_per_pack or "",
+            product.effective_pack_selling_price if product.units_per_pack else "",
+        ])
         if with_stock:
-            row.append(product.stock_on_hand)
+            row.extend([
+                product.stock_on_hand,
+                product.stock_pack_count if product.units_per_pack else "",
+                product.stock_loose_units if product.units_per_pack else "",
+            ])
         row.append(product.reorder_level)
         writer.writerow(row)
     return response
