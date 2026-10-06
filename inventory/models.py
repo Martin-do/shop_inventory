@@ -62,6 +62,7 @@ class Product(models.Model):
     cost_price = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     selling_price = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
     reorder_level = models.PositiveIntegerField(default=5)
+    units_per_pack = models.PositiveIntegerField(null=True, blank=True, validators=[MinValueValidator(2)], help_text="Optional. Number of individual sellable units in one full pack.")
     is_active = models.BooleanField(default=True)
     image = models.ImageField(upload_to="products/", blank=True, null=True)
     variant = models.CharField(max_length=80, blank=True, help_text="e.g. 1L, 1.5L, Pack of 6")
