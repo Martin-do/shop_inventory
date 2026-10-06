@@ -37,6 +37,8 @@ def stocktake_product_search(request):
             "selling_price": str(product.selling_price),
             "reorder_level": product.reorder_level,
             "units_per_pack": product.units_per_pack,
+            "pack_selling_price": str(product.pack_selling_price) if product.pack_selling_price is not None else "",
+            "effective_pack_selling_price": str(product.effective_pack_selling_price) if product.effective_pack_selling_price is not None else "",
         }
         if can_view_cost:
             item["cost_price"] = str(product.cost_price)
