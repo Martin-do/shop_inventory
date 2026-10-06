@@ -37,6 +37,37 @@ def _can_access_zone(user, zone):
     return user.role == UserProfile.ROLE_ADMIN or zone.assigned_users.filter(pk=user.pk).exists()
 
 
+MAX_STOCKTAKE_QUANTITY = 9999
+STOCKTAKE_QUANTITY_FIELDS = (
+    "good_quantity",
+    "damaged_quantity",
+    "expired_quantity",
+    "reserved_quantity",
+)
+
+
+def _parse_stocktake_quantities(post_data):
+    values = {}
+    for key in STOCKTAKE_QUANTITY_FIELDS:
+        raw = str(post_data.get(key, 0) or 0).strip()
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            return None, "Stock quantities must be whole numbers."
+
+        if value < 0:
+            return None, "Stock quantities cannot be negative."
+
+        if value > MAX_STOCKTAKE_QUANTITY:
+            return None, (
+                f"Quantity {value} is too large for a stocktake count and looks like a barcode scan. "
+                f"Nothing was saved. Keep quantities at {MAX_STOCKTAKE_QUANTITY:,} or below and scan the next product in the barcode field."
+            )
+        values[key] = value
+
+    return values, None
+
+
 @role_required([UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK])
 def stocktake_list(request):
     sessions = StocktakeSession.objects.annotate(
@@ -166,13 +197,9 @@ def stocktake_save_count(request, zone_id):
     if not product:
         return JsonResponse({"unknown": True, "barcode": barcode}, status=404)
 
-    try:
-        values = {
-            key: max(0, int(request.POST.get(key, 0) or 0))
-            for key in ("good_quantity", "damaged_quantity", "expired_quantity", "reserved_quantity")
-        }
-    except (TypeError, ValueError):
-        return JsonResponse({"error": "Quantities must be whole numbers."}, status=400)
+    values, quantity_error = _parse_stocktake_quantities(request.POST)
+    if quantity_error:
+        return JsonResponse({"error": quantity_error, "barcode_like_quantity": True}, status=400)
 
     count, created = StocktakeCount.objects.update_or_create(
         session=zone.session,
