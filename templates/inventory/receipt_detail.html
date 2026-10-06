@@ -46,16 +46,13 @@
           <label>Selling price<input name="selling_price" type="number" min="0" step="0.01"></label>
           {% if can_change_cost %}<label>Cost price<input name="cost_price" type="number" min="0" step="0.01"></label>{% endif %}
         </div>
-        <label>Units per pack <span style="color:var(--muted);">(optional)</span><input name="units_per_pack" id="receipt-units-per-pack" type="number" min="2" placeholder="e.g. 10 or 12"></label>
         <label>Pack selling price <span style="color:var(--muted);">(optional)</span><input name="pack_selling_price" type="number" min="0" step="0.01" placeholder="Defaults to unit price × pack size"></label>
         <label>Low-stock alert level<input name="reorder_level" type="number" min="0" value="5"></label>
       </div>
     </details>
     {% endif %}
 
-    {% if not can_create_products %}
     <label>Units per pack <span style="color:var(--muted);">(optional)</span><input name="units_per_pack" id="receipt-units-per-pack" type="number" min="2" placeholder="e.g. 10 or 12"></label>
-    {% endif %}
     <div style="display:grid;grid-template-columns:180px 1fr;gap:12px;align-items:end;">
       <label>Count received stock as
         <select name="count_entry_mode" id="receipt-entry-mode">
