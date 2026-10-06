@@ -146,6 +146,111 @@ class StockReceiptWorkflowTests(TestCase):
         self.assertEqual(receipt.lines.get(product=product).quantity_received, 6)
 
 
+    def test_receipt_can_be_entered_as_packs_plus_loose_units(self):
+        self.product.units_per_pack = 12
+        self.product.save(update_fields=["units_per_pack"])
+        receipt = self._draft_receipt()
+
+        response = self.client.post(reverse("stock_receipt_add_line", args=[receipt.pk]), {
+            "barcode": self.product.barcode,
+            "count_entry_mode": "packs",
+            "units_per_pack": "12",
+            "pack_count": "2",
+            "loose_units": "5",
+            "quantity": "",
+        })
+
+        self.assertRedirects(response, reverse("stock_receipt_detail", args=[receipt.pk]))
+        line = receipt.lines.get(product=self.product)
+        self.assertEqual(line.quantity_received, 29)
+        self.assertEqual(line.count_entry_mode, "packs")
+        self.assertEqual(line.pack_count_entered, 2)
+        self.assertEqual(line.loose_units_entered, 5)
+        self.assertEqual(line.units_per_pack_snapshot, 12)
+        self.assertEqual(self.product.stock_on_hand, 0)
+
+    def test_pack_receipt_applies_base_units_after_approval(self):
+        self.product.units_per_pack = 10
+        self.product.save(update_fields=["units_per_pack"])
+        receipt = self._draft_receipt()
+        self.client.post(reverse("stock_receipt_add_line", args=[receipt.pk]), {
+            "barcode": self.product.barcode,
+            "count_entry_mode": "packs",
+            "units_per_pack": "10",
+            "pack_count": "3",
+            "loose_units": "4",
+        })
+        self.client.post(reverse("stock_receipt_submit", args=[receipt.pk]))
+
+        self.client.force_login(self.owner)
+        line = receipt.lines.get()
+        self.client.post(reverse("stock_receipt_review_line", args=[receipt.pk, line.pk]), {
+            "approved_quantity": "34",
+        })
+        self.client.post(reverse("stock_receipt_apply", args=[receipt.pk]))
+
+        self.assertEqual(self.product.stock_on_hand, 34)
+
+    def test_repeated_pack_entries_normalize_loose_units(self):
+        self.product.units_per_pack = 12
+        self.product.save(update_fields=["units_per_pack"])
+        receipt = self._draft_receipt()
+        url = reverse("stock_receipt_add_line", args=[receipt.pk])
+        self.client.post(url, {
+            "barcode": self.product.barcode,
+            "count_entry_mode": "packs",
+            "units_per_pack": "12",
+            "pack_count": "1",
+            "loose_units": "8",
+        })
+        self.client.post(url, {
+            "barcode": self.product.barcode,
+            "count_entry_mode": "packs",
+            "units_per_pack": "12",
+            "pack_count": "2",
+            "loose_units": "7",
+        })
+
+        line = receipt.lines.get(product=self.product)
+        self.assertEqual(line.quantity_received, 51)
+        self.assertEqual(line.pack_count_entered, 4)
+        self.assertEqual(line.loose_units_entered, 3)
+
+    def test_receipt_rejects_invalid_loose_units(self):
+        self.product.units_per_pack = 10
+        self.product.save(update_fields=["units_per_pack"])
+        receipt = self._draft_receipt()
+
+        self.client.post(reverse("stock_receipt_add_line", args=[receipt.pk]), {
+            "barcode": self.product.barcode,
+            "count_entry_mode": "packs",
+            "units_per_pack": "10",
+            "pack_count": "1",
+            "loose_units": "10",
+        })
+
+        self.assertFalse(receipt.lines.exists())
+
+    def test_new_receipt_product_can_store_pack_configuration(self):
+        receipt = self._draft_receipt()
+        self.client.post(reverse("stock_receipt_add_line", args=[receipt.pk]), {
+            "barcode": "NEW-PACK-001",
+            "name": "Pack Medicine",
+            "selling_price": "100.00",
+            "pack_selling_price": "950.00",
+            "units_per_pack": "10",
+            "count_entry_mode": "packs",
+            "pack_count": "2",
+            "loose_units": "1",
+        })
+
+        product = Product.objects.get(barcode="NEW-PACK-001")
+        line = receipt.lines.get(product=product)
+        self.assertEqual(product.units_per_pack, 10)
+        self.assertEqual(product.pack_selling_price, Decimal("950.00"))
+        self.assertEqual(line.quantity_received, 21)
+
+
 class SafeProductDeleteTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_superuser("owner_delete", "delete@example.com", "pw")
