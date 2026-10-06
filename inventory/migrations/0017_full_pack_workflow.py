@@ -68,7 +68,6 @@ class Migration(migrations.Migration):
                 default=1,
                 validators=[django.core.validators.MinValueValidator(1)],
             ),
-            preserve_default=False,
         ),
         migrations.AddField(
             model_name="saleitem",
