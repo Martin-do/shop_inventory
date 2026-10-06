@@ -73,6 +73,7 @@ class ProductForm(forms.ModelForm):
         # Selling price is needed to create a product, but changing it later is a pricing decision.
         if editing and not has_access(self.user, "change_selling_price"):
             self.fields["selling_price"].disabled = True
+            self.fields["pack_selling_price"].disabled = True
 
         can_change_cost = has_access(self.user, "change_cost_price")
         can_see_cost = can_change_cost or has_access(self.user, "view_cost_price")
@@ -196,6 +197,7 @@ class ReceiveStockForm(forms.Form):
 
 class AddToCartForm(forms.Form):
     barcode = forms.CharField(max_length=80)
+    sale_unit = forms.ChoiceField(choices=[("unit", "Unit"), ("pack", "Pack")], required=False, initial="unit")
     quantity = forms.IntegerField(min_value=1, initial=1)
 
     def clean_barcode(self):
@@ -203,6 +205,16 @@ class AddToCartForm(forms.Form):
         if not Product.objects.filter(barcode=barcode, is_active=True).exists():
             raise forms.ValidationError("No active product was found for this barcode.")
         return barcode
+
+    def clean(self):
+        cleaned_data = super().clean()
+        barcode = cleaned_data.get("barcode")
+        sale_unit = cleaned_data.get("sale_unit") or "unit"
+        if barcode and sale_unit == "pack":
+            product = Product.objects.filter(barcode=barcode, is_active=True).first()
+            if product and not product.units_per_pack:
+                self.add_error("sale_unit", "This product is not configured for pack sales.")
+        return cleaned_data
 
 
 class CheckoutForm(forms.Form):
