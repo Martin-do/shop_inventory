@@ -128,7 +128,9 @@ def stocktake_edit_record(request, count_id):
 
 def _can_change_count(user, zone):
     return has_access(user, "count_assigned_zones") and (
-        _can_view_all(user) or _assigned_to_zone(user, zone)
+        _assigned_to_zone(user, zone)
+        or has_access(user, "review_stocktake_counts")
+        or has_access(user, "apply_stocktakes")
     )
 
 
