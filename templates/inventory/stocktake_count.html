@@ -286,10 +286,11 @@
    box.hidden=false;
    const configured=productData?Number(productData.units_per_pack||0):Number(units.value||0);
    if(productData)units.value=configured||'';
-   const canEdit=!productData||(productData.permissions&&productData.permissions.edit_product);
-   units.disabled=!!productData&&!canEdit;
+   // Pack size is always editable for the count itself; saving the catalogue
+   // pack configuration remains restricted to authorised product editors.
+   units.disabled=false;
    if(count&&count.count_entry_mode==='packs'&&count.units_per_pack_snapshot){
-     if(!configured&&canEdit)units.value=count.units_per_pack_snapshot;
+     units.value=count.units_per_pack_snapshot;
      packCount.value=count.pack_count_entered??0;
      loose.value=count.loose_units_entered??0;
    }else if(count&&configured){
