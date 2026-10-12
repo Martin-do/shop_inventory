@@ -285,9 +285,8 @@ def stocktake_edit_record(request, count_id):
     units_per_pack, pack_changed, pack_error = _resolve_units_per_pack(request.POST, product.units_per_pack)
     if pack_error:
         return JsonResponse({"error": pack_error}, status=400)
-    if pack_changed and not can_edit_product:
-        return JsonResponse({"error": "You do not have permission to change this product's pack size."}, status=403)
-
+    # Count staff can specify the observed pack size without catalogue privileges.
+    # Product metadata changes still require edit_products below.
     quantities, pack_entry, quantity_error = _parse_stocktake_entry(request.POST, units_per_pack)
     if quantity_error:
         return JsonResponse({"error": quantity_error, "barcode_like_quantity": "barcode" in quantity_error.lower()}, status=400)
