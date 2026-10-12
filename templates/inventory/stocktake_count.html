@@ -709,8 +709,8 @@
    let r=await fetch(url,{method:'POST',headers:{'X-CSRFToken':csrf},body:data});
    let j=await r.json();
    if(r.status===409&&j.similar_products){
-     const existing=j.similar_products.map(p=>p.name+(p.variant?' ('+p.variant+')':'')+' — '+(p.barcode.startsWith('MANUAL-')?'No physical barcode':p.barcode)).join('\\n');
-     if(!window.confirm('A matching product already exists:\\n'+existing+'\\n\\nCreate a separate product anyway? Cancel to find and edit the existing item.'))return;
+     const existing=j.similar_products.map(p=>p.name+(p.variant?' ('+p.variant+')':'')+' — '+(p.barcode.startsWith('MANUAL-')?'No physical barcode':p.barcode)).join('\n');
+     if(!window.confirm('A matching product already exists:\n'+existing+'\n\nCreate a separate product anyway? Cancel to find and edit the existing item.'))return;
      data.set('confirm_similar_product','1');
      r=await fetch(url,{method:'POST',headers:{'X-CSRFToken':csrf},body:data});
      j=await r.json();
