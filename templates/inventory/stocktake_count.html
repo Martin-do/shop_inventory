@@ -215,99 +215,101 @@
    return true;
  }
  function updatePackCounter(targetForm){
+   const sizeField=targetForm.querySelector('[name=units_per_pack]');
+   const packField=targetForm.querySelector('[name=pack_count]');
+   const looseField=targetForm.querySelector('[name=loose_units]');
    const mode=targetForm.querySelector('[name=count_entry_mode]');
-   const unitsInput=targetForm.querySelector('[name=units_per_pack]');
-   const fields=targetForm.querySelector('[data-pack-fields]');
-   const totalLabel=targetForm.querySelector('[data-pack-total]');
-   const unitTotalField=targetForm.querySelector('[data-unit-total-field]');
    const good=targetForm.querySelector('[name=good_quantity]');
-   if(!mode||!fields||!good)return true;
-   const usingPacks=mode.value==='packs';
-   fields.hidden=!usingPacks;
-   if(unitTotalField)unitTotalField.hidden=usingPacks;
-   good.readOnly=usingPacks;
-   if(!usingPacks)return true;
-   const units=Number((unitsInput&&unitsInput.value)||0);
-   const packs=Number((targetForm.querySelector('[name=pack_count]')||{}).value||0);
-   const loose=Number((targetForm.querySelector('[name=loose_units]')||{}).value||0);
-   if(!Number.isInteger(units)||units<2){
-     if(totalLabel)totalLabel.innerHTML='<span>TOTAL SELLABLE STOCK</span><strong>—</strong><span class="pack-calculation">Enter how many units are in one full pack.</span>';
+   const totalLabel=targetForm.querySelector('[data-pack-total]');
+   if(!sizeField||!packField||!looseField||!mode||!good)return false;
+   const rawSize=sizeField.value.trim();
+   const rawPack=packField.value.trim();
+   const rawLoose=looseField.value.trim();
+   const size=rawSize===''?null:Number(rawSize);
+   const packs=rawPack===''?0:Number(rawPack);
+   const loose=rawLoose===''?0:Number(rawLoose);
+   const setStatus=(message,total=null,equation='')=>{
+     if(!totalLabel)return;
+     const headline=totalLabel.querySelector('strong');
+     const calculation=totalLabel.querySelector('.pack-calculation');
+     if(headline)headline.textContent=total===null?'Check quantities':total+' units';
+     if(calculation)calculation.textContent=message||equation;
+   };
+   const valid=Number.isSafeInteger(packs)&&packs>=0&&Number.isSafeInteger(loose)&&loose>=0&&
+     (size===null||(Number.isSafeInteger(size)&&size>=2))&&
+     (size!==null||packs===0);
+   if(!valid){
+     good.value='0';
+     setStatus(size===null&&packs>0?'Enter the number of units in a full pack first.':'Use non-negative whole numbers. Pack size must be at least 2.');
      return false;
    }
-   if(!Number.isInteger(packs)||packs<0||!Number.isInteger(loose)||loose<0){
-     if(totalLabel)totalLabel.innerHTML='<span>TOTAL SELLABLE STOCK</span><strong>—</strong><span class="pack-calculation">Full packs and loose units must be whole numbers.</span>';
+   const total=(packs*(size||0))+loose;
+   if(!Number.isSafeInteger(total)||total>maxStocktakeQuantity){
+     good.value='0';
+     setStatus('Total sellable stock cannot exceed '+maxStocktakeQuantity.toLocaleString()+' units.');
      return false;
    }
-   if(loose>=units){
-     if(totalLabel)totalLabel.innerHTML='<span>TOTAL SELLABLE STOCK</span><strong>—</strong><span class="pack-calculation">Loose units must be fewer than '+units+'. Move a full '+units+' into the pack count.</span>';
-     return false;
-   }
-   const total=(packs*units)+loose;
-   good.value=total;
-   if(totalLabel)totalLabel.innerHTML='<span>TOTAL SELLABLE STOCK</span><strong>'+total+' units</strong><span class="pack-calculation">'+packs+' pack'+(packs===1?'':'s')+' × '+units+' units + '+loose+' loose = '+total+' units</span>';
-   return total<=maxStocktakeQuantity;
- }
- function validatePackCounter(targetForm){
-   const mode=targetForm.querySelector('[name=count_entry_mode]');
-   if(!mode||mode.value!=='packs')return true;
-   if(!updatePackCounter(targetForm)){
-     toast('Enter the units in one pack, number of full packs and loose units before saving.','error');
-     const units=targetForm.querySelector('[name=units_per_pack]');
-     if(units&&!units.disabled)units.focus();
-     return false;
-   }
-   const total=Number(targetForm.querySelector('[name=good_quantity]').value||0);
-   if(total>maxStocktakeQuantity){
-     toast('Calculated stock exceeds the current stocktake safety limit.','error');
-     return false;
-   }
+   mode.value=size===null?'units':'packs';
+   good.value=String(total);
+   const equation=size===null
+     ? loose+' loose units = '+total+' units'
+     : packs+' full pack'+(packs===1?'':'s')+' × '+size+' units + '+loose+' loose = '+total+' units';
+   setStatus('',total,equation);
    return true;
  }
+ function validatePackCounter(targetForm){
+   if(updatePackCounter(targetForm))return true;
+   toast('Check the units in a pack, number of full packs and loose units.','error');
+   const packs=targetForm.querySelector('[name=pack_count]');
+   const size=targetForm.querySelector('[name=units_per_pack]');
+   if(size&&!size.disabled&&(!size.value||Number(size.value)<2))size.focus();
+   else if(packs)packs.focus();
+   return false;
+ }
  function bindPackCounter(targetForm){
-   const mode=targetForm.querySelector('[name=count_entry_mode]');
-   if(!mode)return;
-   ['count_entry_mode','units_per_pack','pack_count','loose_units'].forEach(name=>{
+   for(const name of ['units_per_pack','pack_count','loose_units']){
      const field=targetForm.querySelector('[name='+name+']');
      if(field){
        field.addEventListener('input',()=>updatePackCounter(targetForm));
        field.addEventListener('change',()=>updatePackCounter(targetForm));
      }
-   });
+   }
    updatePackCounter(targetForm);
  }
  function configurePackCounter(targetForm, productData=null, count=null){
    const box=targetForm.querySelector('[data-pack-counter]');
-   const mode=targetForm.querySelector('[name=count_entry_mode]');
    const units=targetForm.querySelector('[name=units_per_pack]');
    const packCount=targetForm.querySelector('[name=pack_count]');
    const loose=targetForm.querySelector('[name=loose_units]');
    const equivalent=targetForm.querySelector('[data-pack-equivalent]');
-   if(!box||!mode||!units)return;
+   if(!box||!units||!packCount||!loose)return;
    box.hidden=false;
-   const configured=productData&&productData.units_per_pack?Number(productData.units_per_pack):Number(units.value||0);
+   const configured=productData?Number(productData.units_per_pack||0):Number(units.value||0);
    if(productData)units.value=configured||'';
    const canEdit=!productData||(productData.permissions&&productData.permissions.edit_product);
    units.disabled=!!productData&&!canEdit;
-   const packOption=mode.querySelector('option[value=packs]');
-   if(packOption)packOption.disabled=!configured&&!canEdit;
    if(count&&count.count_entry_mode==='packs'&&count.units_per_pack_snapshot){
-     mode.value='packs';
      if(!configured&&canEdit)units.value=count.units_per_pack_snapshot;
-     if(packCount)packCount.value=count.pack_count_entered??0;
-     if(loose)loose.value=count.loose_units_entered??0;
+     packCount.value=count.pack_count_entered??0;
+     loose.value=count.loose_units_entered??0;
+   }else if(count&&configured){
+     // Derived breakdown is a display convenience, not an assertion that those
+     // were the originally counted physical packs.
+     packCount.value=Math.floor(Number(count.good_quantity||0)/configured);
+     loose.value=Number(count.good_quantity||0)%configured;
    }else{
-     mode.value='units';
-     if(packCount)packCount.value=0;
-     if(loose)loose.value=0;
+     packCount.value=0;
+     loose.value=count?count.good_quantity:0;
    }
    if(equivalent){
-     if(count&&configured){
-       const packs=Math.floor(Number(count.good_quantity||0)/configured);
-       const remainder=Number(count.good_quantity||0)%configured;
+     if(count){
        equivalent.hidden=false;
-       equivalent.textContent=(count.count_entry_mode==='packs'?'Entered as pack count. ':'Existing total remains authoritative. ')+'At '+configured+' units/pack, '+count.good_quantity+' units = '+packs+' pack'+(packs===1?'':'s')+' + '+remainder+' loose.';
+       equivalent.textContent=count.count_entry_mode==='packs'
+         ? 'Previously entered as packs and loose units.'
+         : 'Previous count was entered as total units. Breakdown displayed here is an equivalent only.';
      }else{
-       equivalent.hidden=true;equivalent.textContent='';
+       equivalent.hidden=true;
+       equivalent.textContent='';
      }
    }
    updatePackCounter(targetForm);
