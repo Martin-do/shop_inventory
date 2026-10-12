@@ -111,6 +111,33 @@ class StocktakeCount(models.Model):
         super().save(*args, **kwargs)
 
 
+class StocktakeRemovedCount(models.Model):
+    """Auditable snapshot of a count removed from an unfinished stocktake."""
+
+    session = models.ForeignKey(StocktakeSession, on_delete=models.PROTECT, related_name="removed_counts")
+    zone = models.ForeignKey(StocktakeZone, on_delete=models.PROTECT, related_name="removed_counts")
+    product = models.ForeignKey("inventory.Product", on_delete=models.PROTECT, related_name="removed_stocktake_counts")
+    original_count_id = models.PositiveIntegerField()
+    snapshot = models.JSONField(default=dict)
+    reason = models.CharField(max_length=240)
+    removed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="removed_stocktake_counts"
+    )
+    removed_at = models.DateTimeField(default=timezone.now)
+    restored_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="restored_stocktake_counts"
+    )
+    restored_at = models.DateTimeField(null=True, blank=True)
+    restored_count_id = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-removed_at"]
+
+    def __str__(self):
+        return f"Removed count {self.original_count_id} for {self.product.name}"
+
+
 class StocktakeEvent(models.Model):
     session = models.ForeignKey(StocktakeSession, on_delete=models.CASCADE, related_name="events")
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
