@@ -304,9 +304,8 @@ def stocktake_save_count(request, zone_id):
     units_per_pack, pack_changed, pack_error = _resolve_units_per_pack(request.POST, product.units_per_pack)
     if pack_error:
         return JsonResponse({"error": pack_error}, status=400)
-    if pack_changed and not has_access(request.user, "edit_products"):
-        return JsonResponse({"error": "You do not have permission to change this product's pack size."}, status=403)
-
+    # Every assigned counter may use the observed pack size for this count.
+    # Only product editors may also update the catalogue pack configuration.
     values, pack_entry, quantity_error = _parse_stocktake_entry(request.POST, units_per_pack)
     if quantity_error:
         return JsonResponse({"error": quantity_error, "barcode_like_quantity": "barcode" in quantity_error.lower()}, status=400)
@@ -328,7 +327,7 @@ def stocktake_save_count(request, zone_id):
             "already_counted": True,
         }, status=409)
 
-    if pack_changed:
+    if pack_changed and has_access(request.user, "edit_products"):
         product.units_per_pack = units_per_pack
         product.save(update_fields=["units_per_pack", "updated_at"])
 
