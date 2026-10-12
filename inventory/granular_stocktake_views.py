@@ -1,5 +1,8 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
+from django.utils import timezone
+from django.views.decorators.http import require_POST
 from django.contrib.auth.models import User
 from django.db.models import Count, Sum
 from django.http import JsonResponse
@@ -7,7 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from .access_control import has_access
 from . import hardened_stocktake_views, stocktake_search, stocktake_views
-from .stocktake_models import StocktakeCount, StocktakeSession, StocktakeZone
+from .stocktake_models import StocktakeCount, StocktakeRemovedCount, StocktakeSession, StocktakeZone
 
 
 def _can_view_all(user):
@@ -121,6 +124,133 @@ def stocktake_edit_record(request, count_id):
     if not _can_view_all(request.user) and not _assigned_to_zone(request.user, zone):
         return JsonResponse({"error": "You are not assigned to this zone."}, status=403)
     return hardened_stocktake_views.stocktake_edit_record.__wrapped__(request, count_id)
+
+
+def _can_change_count(user, zone):
+    return has_access(user, "count_assigned_zones") and (
+        _can_view_all(user) or _assigned_to_zone(user, zone)
+    )
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def stocktake_remove_count(request, count_id):
+    count = get_object_or_404(
+        StocktakeCount.objects.select_for_update().select_related(
+            "session", "zone", "product", "counted_by"
+        ), pk=count_id
+    )
+    if not _can_change_count(request.user, count.zone):
+        return JsonResponse({"error": "You cannot remove counts in this zone."}, status=403)
+    if not count.session.can_count or count.zone.is_complete:
+        return JsonResponse({"error": "Only an active, unfinished zone may have counts removed."}, status=409)
+
+    reason = request.POST.get("reason", "").strip()
+    if len(reason) < 5:
+        return JsonResponse({"error": "Explain why this count should be removed (at least five characters)."}, status=400)
+
+    snapshot = {
+        "good_quantity": count.good_quantity,
+        "damaged_quantity": count.damaged_quantity,
+        "expired_quantity": count.expired_quantity,
+        "reserved_quantity": count.reserved_quantity,
+        "approved_good_quantity": count.approved_good_quantity,
+        "first_count_quantity": count.first_count_quantity,
+        "count_entry_mode": count.count_entry_mode,
+        "pack_count_entered": count.pack_count_entered,
+        "loose_units_entered": count.loose_units_entered,
+        "units_per_pack_snapshot": count.units_per_pack_snapshot,
+        "recount_quantity": count.recount_quantity,
+        "note": count.note,
+        "status": count.status,
+        "counted_by_id": count.counted_by_id,
+        "counted_at": count.counted_at.isoformat(),
+    }
+    original_count_id = count.pk
+    removed = StocktakeRemovedCount.objects.create(
+        session=count.session, zone=count.zone, product=count.product,
+        original_count_id=original_count_id, snapshot=snapshot,
+        reason=reason[:240], removed_by=request.user,
+    )
+    name = count.product.name
+    zone_name = count.zone.name
+    session = count.session
+    count.delete()
+    stocktake_views._event(
+        session, request.user, "count_removed",
+        f"Count for {name} removed from {zone_name}.",
+        {
+            "removed_id": removed.pk,
+            "original_count_id": original_count_id,
+            "product_id": removed.product_id,
+            "zone_id": removed.zone_id,
+            "reason": removed.reason,
+            "snapshot": snapshot,
+        },
+    )
+    return JsonResponse({"ok": True, "removed_id": removed.pk, "count_id": original_count_id})
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def stocktake_restore_count(request, removed_id):
+    removed = get_object_or_404(
+        StocktakeRemovedCount.objects.select_for_update().select_related("session", "zone", "product"),
+        pk=removed_id,
+    )
+    if not _can_change_count(request.user, removed.zone):
+        return JsonResponse({"error": "You cannot restore counts in this zone."}, status=403)
+    if not removed.session.can_count or removed.zone.is_complete:
+        return JsonResponse({"error": "Only counts removed from unfinished stocktakes can be restored."}, status=409)
+    if removed.restored_at is not None:
+        return JsonResponse({"error": "This removed count has already been restored."}, status=409)
+
+    if StocktakeCount.objects.filter(
+        session=removed.session, zone=removed.zone, product=removed.product
+    ).exists():
+        return JsonResponse({
+            "error": "A new count now exists for this product in this zone. Review it before restoring.",
+        }, status=409)
+
+    snapshot = removed.snapshot
+    # An older saved count is restored as a pending count, never silently approved.
+    restored = StocktakeCount.objects.create(
+        session=removed.session, zone=removed.zone, product=removed.product,
+        good_quantity=snapshot["good_quantity"],
+        damaged_quantity=snapshot["damaged_quantity"],
+        expired_quantity=snapshot["expired_quantity"],
+        reserved_quantity=snapshot["reserved_quantity"],
+        approved_good_quantity=snapshot["approved_good_quantity"],
+        count_entry_mode=snapshot.get("count_entry_mode", "units"),
+        pack_count_entered=snapshot.get("pack_count_entered"),
+        loose_units_entered=snapshot.get("loose_units_entered"),
+        units_per_pack_snapshot=snapshot.get("units_per_pack_snapshot"),
+        recount_quantity=snapshot.get("recount_quantity"),
+        note=snapshot.get("note", ""),
+        counted_by_id=snapshot["counted_by_id"],
+        status=StocktakeCount.STATUS_COUNTED,
+    )
+    StocktakeCount.objects.filter(pk=restored.pk).update(
+        first_count_quantity=snapshot["first_count_quantity"],
+    )
+    removed.restored_by = request.user
+    removed.restored_at = timezone.now()
+    removed.restored_count_id = restored.pk
+    removed.save(update_fields=["restored_by", "restored_at", "restored_count_id"])
+    stocktake_views._event(
+        removed.session, request.user, "count_restored",
+        f"Count for {removed.product.name} restored in {removed.zone.name}.",
+        {
+            "removed_id": removed.pk,
+            "count_id": restored.pk,
+            "original_count_id": removed.original_count_id,
+            "product_id": removed.product_id,
+            "zone_id": removed.zone_id,
+        },
+    )
+    return JsonResponse({"ok": True, "count_id": restored.pk, "removed_id": removed.pk})
 
 
 @login_required
