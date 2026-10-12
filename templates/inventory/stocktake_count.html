@@ -440,17 +440,134 @@
  }
  bindProductLookupSearch();
  function showProductForm(code=''){unknown.hidden=false;newBarcode.value=code||'';setTimeout(()=>newName.focus(),50);}
+ const saveButton=document.getElementById('save-count');
+ const confirmOtherZone=form.querySelector('[name=confirm_other_zone]');
+ function clearCurrentLookup(){
+   productReady=false;
+   confirmOtherZone.value='0';
+   saveButton.disabled=true;
+   saveButton.textContent='Save new count';
+   form.querySelector('[name=good_quantity]').value='0';
+   form.querySelector('[name=damaged_quantity]').value='0';
+   form.querySelector('[name=expired_quantity]').value='0';
+   form.querySelector('[name=reserved_quantity]').value='0';
+   form.querySelector('[name=note]').value='';
+   form.querySelector('[data-pack-counter]').hidden=true;
+   result.textContent='';result.className='';
+   barcode.value='';
+   barcode.focus();
+ }
+ function noticeButton(label,onClick,primary=false){
+   const button=document.createElement('button');
+   button.type='button';
+   button.className=primary?'button primary':'button';
+   button.textContent=label;
+   button.addEventListener('click',onClick);
+   return button;
+ }
  function setCountFields(count,productData=null){
    form.querySelector('[name=good_quantity]').value=count?count.good_quantity:0;
    form.querySelector('[name=damaged_quantity]').value=count?count.damaged_quantity:0;
    form.querySelector('[name=expired_quantity]').value=count?count.expired_quantity:0;
    form.querySelector('[name=reserved_quantity]').value=count?count.reserved_quantity:0;
    form.querySelector('[name=note]').value=count?count.note:'';
-   document.getElementById('save-count').textContent=count?'Update count':'Save count';
    configurePackCounter(form,productData,count);
  }
- function showProduct(j){productReady=true;unknown.hidden=true;result.className='product-banner';result.textContent=j.product+(j.variant?' — '+j.variant:'')+(j.category?' · '+j.category:'')+(j.units_per_pack?' · '+j.units_per_pack+' units/pack':'')+(j.existing_count?' · Existing count loaded for editing':'');setCountFields(j.existing_count||null,j);document.getElementById('good-quantity').focus();}
- async function lookupProduct(){const code=barcode.value.trim();if(!code){toast('Enter or scan a barcode first.','error');return false;}const data=new FormData();data.append('barcode',code);data.append('lookup_only','1');data.append('csrfmiddlewaretoken',csrf);const r=await fetch('{% url "stocktake_save_count" zone.id %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:data});const j=await r.json();if(r.status===404&&j.unknown){productReady=false;result.className='';result.textContent='No product found for '+j.barcode;showProductForm(j.barcode);return false;}if(!r.ok){toast(j.error||'Could not find product','error');return false;}showProduct(j);return true;}
+ function showProduct(j){
+   unknown.hidden=true;
+   confirmOtherZone.value='0';
+   result.replaceChildren();
+   setCountFields(j.existing_count||null,j);
+   const title=document.createElement('strong');
+   title.textContent=j.product+(j.variant?' — '+j.variant:'');
+   result.append(title);
+   if(j.existing_count){
+     productReady=false;
+     saveButton.disabled=true;
+     saveButton.textContent='Already counted — edit existing record';
+     result.className='product-banner stocktake-duplicate';
+     const warning=document.createElement('p');
+     warning.textContent='ALREADY COUNTED IN THIS ZONE. Recorded: '+j.existing_count.good_quantity+
+       ' units by '+(j.existing_count.counted_by||'staff')+
+       (j.existing_count.counted_at?' on '+new Date(j.existing_count.counted_at).toLocaleString():'')+
+       '. Nothing will be overwritten by scanning again.';
+     result.append(warning);
+     const actions=document.createElement('div');
+     actions.className='stocktake-notice-actions';
+     actions.append(
+       noticeButton('View / edit existing count',()=>openFullEditor(j.barcode),true),
+       noticeButton('Remove mistaken count',()=>removeCount(j.existing_count.id,j.product)),
+       noticeButton('Skip / scan next',clearCurrentLookup)
+     );
+     result.append(actions);
+     toast('This product has already been counted. Select Edit to change it.','error');
+     return;
+   }
+   if(j.other_zone_counts&&j.other_zone_counts.length){
+     productReady=false;
+     saveButton.disabled=true;
+     saveButton.textContent='Confirm a separate zone count first';
+     result.className='product-banner stocktake-duplicate';
+     const warning=document.createElement('p');
+     warning.textContent='ALREADY COUNTED ELSEWHERE IN THIS STOCKTAKE: '+
+       j.other_zone_counts.map(x=>x.zone+' ('+x.good_quantity+' units)').join(', ')+
+       '. Only proceed if this is additional physical stock in the current zone.';
+     result.append(warning);
+     const actions=document.createElement('div');
+     actions.className='stocktake-notice-actions';
+     actions.append(
+       noticeButton('Count separately in this zone',()=>{
+         confirmOtherZone.value='1';
+         productReady=true;
+         saveButton.disabled=false;
+         saveButton.textContent='Save separate zone count';
+         result.className='product-banner';
+         warning.textContent='Confirmed: this stock is physically in the current zone, separate from previously counted stock.';
+         actions.remove();
+         form.querySelector('[name=pack_count]').focus();
+       },true),
+       noticeButton('Skip / scan next',clearCurrentLookup)
+     );
+     result.append(actions);
+     toast('Already counted in another zone — confirmation required.','error');
+     return;
+   }
+   productReady=true;
+   saveButton.disabled=false;
+   saveButton.textContent='Save new count';
+   result.className='product-banner';
+   if(j.units_per_pack){
+     const detail=document.createElement('span');
+     detail.textContent=' · '+j.units_per_pack+' units per pack';
+     result.append(detail);
+   }
+   form.querySelector('[name=pack_count]').focus();
+ }
+ async function lookupProduct(){
+   const code=barcode.value.trim();
+   if(!code){toast('Enter or scan a barcode first.','error');return false;}
+   productReady=false;
+   saveButton.disabled=true;
+   const data=new FormData();
+   data.append('barcode',code);
+   data.append('lookup_only','1');
+   data.append('csrfmiddlewaretoken',csrf);
+   const r=await fetch('{% url "stocktake_save_count" zone.id %}',{
+     method:'POST',headers:{'X-CSRFToken':csrf},body:data
+   });
+   const j=await r.json();
+   if(barcode.value.trim()!==code)return false;
+   if(r.status===404&&j.unknown){
+     productReady=false;
+     result.className='';
+     result.textContent='No product found for '+j.barcode;
+     showProductForm(j.barcode);
+     return false;
+   }
+   if(!r.ok){toast(j.error||'Could not find product','error');return false;}
+   showProduct(j);
+   return productReady;
+ }
  function filterCountedProducts(){
    const query=(document.getElementById('count-search').value||'').trim().toLowerCase();
    const rows=[...document.querySelectorAll('#recent-list [data-recent-barcode]')];
