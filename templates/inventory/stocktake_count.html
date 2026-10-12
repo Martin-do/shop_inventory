@@ -45,6 +45,12 @@
 .pack-total strong{display:block;font-size:18px;margin-top:2px}
 .pack-calculation{display:block;margin-top:4px;color:var(--muted);font-size:12px;font-weight:600}
 .pack-equivalent{margin:8px 0 0;color:var(--muted);font-size:13px}
+.stocktake-duplicate{border-color:var(--amber-line);background:var(--amber-tint)}
+.stocktake-duplicate strong{display:block;font-size:15px}
+.stocktake-notice-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.stocktake-notice-actions button{min-height:40px}
+.removed-stocktake-row{padding:10px 0;border-bottom:1px solid var(--line)}
+.removed-stocktake-row:last-child{border-bottom:none}
 .unit-total-field[hidden]{display:none}
 @media(max-width:620px){.pack-count-grid{grid-template-columns:1fr}}
 .suggest-wrap{position:relative}
@@ -73,14 +79,11 @@
   <div class="suggest-menu" id="lookup-suggest-menu" hidden></div>
 </div>
 <div class="new-product-actions"><button class="button" type="button" id="open-product-form">+ Add a new product</button></div>
-<div id="product-result"></div>
+<div id="product-result" role="status" aria-live="polite"></div>
 <div class="pack-entry" data-pack-counter hidden>
-  <label>How are you counting the sellable stock?</label>
-  <select name="count_entry_mode">
-    <option value="units">Enter total individual units</option>
-    <option value="packs">Enter pack breakdown</option>
-  </select>
-  <div class="pack-fields" data-pack-fields hidden>
+  <p class="form-note"><strong>Sellable stock:</strong> Enter full packs and any loose units. No packs? Leave the first two boxes empty or at zero.</p>
+  <input type="hidden" name="count_entry_mode" value="units">
+  <div class="pack-fields" data-pack-fields>
     <div class="pack-count-grid">
       <div data-pack-size-wrap><label>How many units are in one full pack?</label><input name="units_per_pack" type="number" min="2" inputmode="numeric" placeholder="e.g. 10 or 12"></div>
       <div><label>How many full packs?</label><input name="pack_count" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
@@ -94,8 +97,9 @@
   </div>
   <p class="pack-equivalent" data-pack-equivalent hidden></p>
 </div>
-<div class="qty-grid"><div class="unit-total-field" data-unit-total-field><label>Total sellable units</label><input id="good-quantity" type="number" min="0" name="good_quantity" value="0" max="9999" inputmode="numeric"></div><div><label>Damaged</label><input type="number" min="0" name="damaged_quantity" value="0" max="9999" inputmode="numeric"></div><div><label>Expired</label><input type="number" min="0" name="expired_quantity" value="0" max="9999" inputmode="numeric"></div><div><label>Reserved</label><input type="number" min="0" name="reserved_quantity" value="0" max="9999" inputmode="numeric"></div></div>
+<input id="good-quantity" type="hidden" name="good_quantity" value="0"><div class="qty-grid"><div><label>Damaged</label><input type="number" min="0" name="damaged_quantity" value="0" max="9999" inputmode="numeric"></div><div><label>Expired</label><input type="number" min="0" name="expired_quantity" value="0" max="9999" inputmode="numeric"></div><div><label>Reserved</label><input type="number" min="0" name="reserved_quantity" value="0" max="9999" inputmode="numeric"></div></div>
 <label>Note</label><input name="note" placeholder="Optional observation">
+<input type="hidden" name="confirm_other_zone" value="0">
 <button class="button primary" id="save-count" style="width:100%;margin-top:12px;min-height:50px;font-size:15px">Save count</button>
 </form>
 </div>
@@ -121,12 +125,9 @@
 <h4>Opening stock quantities</h4>
 <p class="form-note">Enter the physical stock available now. Sellable stock becomes the product's usable balance only after this stocktake is reviewed and applied.</p>
 <div class="pack-entry" data-pack-counter>
-  <label>How are you counting the sellable stock?</label>
-  <select name="count_entry_mode">
-    <option value="units">Enter total individual units</option>
-    <option value="packs">Enter pack breakdown</option>
-  </select>
-  <div class="pack-fields" data-pack-fields hidden>
+  <p class="form-note"><strong>Sellable stock:</strong> Enter full packs and any loose units. No packs? Leave the first two boxes empty or at zero.</p>
+  <input type="hidden" name="count_entry_mode" value="units">
+  <div class="pack-fields" data-pack-fields>
     <div class="pack-count-grid">
       <div><label>How many units are in one full pack?</label><input name="units_per_pack" type="number" min="2" inputmode="numeric" placeholder="e.g. 10 or 12"></div>
       <div><label>How many full packs?</label><input name="pack_count" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
@@ -135,8 +136,7 @@
     <div class="pack-total" data-pack-total><span>TOTAL SELLABLE STOCK</span><strong>0 units</strong><span class="pack-calculation">Enter the pack size, full packs and loose units.</span></div>
   </div>
 </div>
-<div class="qty-grid">
-<div class="unit-total-field" data-unit-total-field><label>Total sellable units</label><input name="good_quantity" type="number" min="0" value="0" required max="9999" inputmode="numeric"></div>
+<input type="hidden" name="good_quantity" value="0"><div class="qty-grid">
 <div><label>Damaged stock</label><input name="damaged_quantity" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
 <div><label>Expired stock</label><input name="expired_quantity" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
 <div><label>Reserved stock</label><input name="reserved_quantity" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
@@ -161,12 +161,9 @@
 <label>Pack selling price <span class="muted">(optional)</span></label><input name="pack_selling_price" type="number" min="0" step="0.01" placeholder="Only used if this product is sold by full pack">
 <div class="stock-entry-box"><h4>Stocktake quantities</h4>
 <div class="pack-entry" data-pack-counter>
-  <label>How are you counting the sellable stock?</label>
-  <select name="count_entry_mode">
-    <option value="units">Enter total individual units</option>
-    <option value="packs">Enter pack breakdown</option>
-  </select>
-  <div class="pack-fields" data-pack-fields hidden>
+  <p class="form-note"><strong>Sellable stock:</strong> Enter full packs and any loose units. No packs? Leave the first two boxes empty or at zero.</p>
+  <input type="hidden" name="count_entry_mode" value="units">
+  <div class="pack-fields" data-pack-fields>
     <div class="pack-count-grid">
       <div><label>How many units are in one full pack?</label><input name="units_per_pack" type="number" min="2" inputmode="numeric" placeholder="e.g. 10 or 12"></div>
       <div><label>How many full packs?</label><input name="pack_count" type="number" min="0" value="0" max="9999" inputmode="numeric"></div>
@@ -176,11 +173,23 @@
   </div>
   <p class="pack-equivalent" data-pack-equivalent hidden></p>
 </div>
-<div class="qty-grid"><div class="unit-total-field" data-unit-total-field><label>Total sellable units</label><input name="good_quantity" type="number" min="0" required max="9999" inputmode="numeric"></div><div><label>Damaged</label><input name="damaged_quantity" type="number" min="0" max="9999" inputmode="numeric"></div><div><label>Expired</label><input name="expired_quantity" type="number" min="0" max="9999" inputmode="numeric"></div><div><label>Reserved</label><input name="reserved_quantity" type="number" min="0" max="9999" inputmode="numeric"></div></div><label>Stock note</label><input name="note" maxlength="240"></div>
+<input type="hidden" name="good_quantity" value="0"><div class="qty-grid"><div><label>Damaged</label><input name="damaged_quantity" type="number" min="0" max="9999" inputmode="numeric"></div><div><label>Expired</label><input name="expired_quantity" type="number" min="0" max="9999" inputmode="numeric"></div><div><label>Reserved</label><input name="reserved_quantity" type="number" min="0" max="9999" inputmode="numeric"></div></div><label>Stock note</label><input name="note" maxlength="240"></div>
 <button class="button primary" style="width:100%;margin-top:10px">Save full record</button>
 </form>
 </div>
-<div class="card"><h3 style="font-size:15px">Counted products</h3><p class="form-note">Search by product name, barcode, variant, category or counter. Results update as you type. Use Edit to reload a saved count, correct it, and save again.</p><form method="get" class="count-search" id="count-search-form" data-live-search data-live-target="#counted-products-results"><div class="lookup-row"><input id="count-search" name="q" type="search" value="{{ count_search_query }}" placeholder="Search counted products..." autocomplete="off"><button class="button" type="submit">Search</button></div></form><div id="counted-products-results" aria-live="polite"><div id="recent-list">{% for row in recent %}<div class="recent-row" data-recent-barcode="{{ row.product.barcode }}" data-search="{{ row.product.name|lower }} {{ row.product.barcode|lower }} {{ row.product.variant|lower }} {% if row.product.category %}{{ row.product.category.name|lower }}{% endif %}"><span class="recent-main"><strong>{{ row.product.name }}</strong>{% if row.product.variant %} <span class="muted">({{ row.product.variant }})</span>{% endif %}<br><small>{% if row.product.barcode|slice:":7" == "MANUAL-" %}No barcode{% else %}{{ row.product.barcode }}{% endif %}{% if row.product.category %} · {{ row.product.category.name }}{% endif %} · {{ row.counted_by.username }}</small></span><span class="recent-actions"><strong class="recent-qty">{{ row.good_quantity }}</strong><button type="button" class="button edit-count" data-barcode="{{ row.product.barcode }}">Edit</button></span></div>{% empty %}<p class="muted">No items counted yet.</p>{% endfor %}</div><p id="count-search-empty" class="count-search-empty" hidden>No counted product matches your search.</p></div></div>
+<div class="card"><h3 style="font-size:15px">Counted products</h3><p class="form-note">Search by product name, barcode, variant, category or counter. Results update as you type. Use Edit to reload a saved count, correct it, and save again.</p><form method="get" class="count-search" id="count-search-form" data-live-search data-live-target="#counted-products-results"><div class="lookup-row"><input id="count-search" name="q" type="search" value="{{ count_search_query }}" placeholder="Search counted products..." autocomplete="off"><button class="button" type="submit">Search</button></div></form><div id="counted-products-results" aria-live="polite"><div id="recent-list">{% for row in recent %}<div class="recent-row" data-recent-barcode="{{ row.product.barcode }}" data-search="{{ row.product.name|lower }} {{ row.product.barcode|lower }} {{ row.product.variant|lower }} {% if row.product.category %}{{ row.product.category.name|lower }}{% endif %}"><span class="recent-main"><strong>{{ row.product.name }}</strong>{% if row.product.variant %} <span class="muted">({{ row.product.variant }})</span>{% endif %}<br><small>{% if row.product.barcode|slice:":7" == "MANUAL-" %}No barcode{% else %}{{ row.product.barcode }}{% endif %}{% if row.product.category %} · {{ row.product.category.name }}{% endif %} · {{ row.counted_by.username }}</small></span><span class="recent-actions"><strong class="recent-qty">{{ row.good_quantity }}</strong><button type="button" class="button edit-count" data-barcode="{{ row.product.barcode }}">Edit</button><button type="button" class="button remove-count" data-count-id="{{ row.pk }}" data-product="{{ row.product.name }}">Remove</button></span></div>{% empty %}<p class="muted">No items counted yet.</p>{% endfor %}</div><p id="count-search-empty" class="count-search-empty" hidden>No counted product matches your search.</p></div></div>
+<div class="card" id="removed-stocktake-card">
+<h3 style="font-size:15px">Removed counts</h3>
+<p class="form-note">Removed counts do not contribute to totals. Each removal retains the original count and reason. You can restore it while this zone remains open, unless a new count has replaced it.</p>
+<div id="removed-stocktake-list">
+{% for removed in removed_counts %}
+<div class="removed-stocktake-row"><strong>{{ removed.product.name }}</strong>
+<div class="muted">{{ removed.snapshot.good_quantity }} units · {{ removed.removed_by.username }} · {{ removed.removed_at|date:"d M Y H:i" }}</div>
+<div class="form-note">Reason: {{ removed.reason }}</div>
+<button type="button" class="button restore-count" data-removed-id="{{ removed.pk }}">Restore count</button></div>
+{% empty %}<p class="muted">No removed counts in this zone.</p>{% endfor %}
+</div>
+</div>
 <form method="post" action="{% url 'stocktake_complete_zone' zone.id %}" style="margin-top:12px">{% csrf_token %}<button class="button" style="width:100%;min-height:48px">Finish this zone</button></form>
 </aside></div>
 <script>
