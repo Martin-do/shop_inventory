@@ -657,7 +657,7 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, 'name="pack_count"')
         self.assertContains(response, 'name="loose_units"')
         self.assertContains(response, 'type="hidden" name="count_entry_mode"')
-        self.assertContains(response, "Existing total remains authoritative")
+        self.assertContains(response, "Previous count was entered as total units.")
 
 
     def test_default_pack_fields_accept_units_without_pack_size(self):
