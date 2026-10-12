@@ -2,9 +2,9 @@ from django.contrib.auth.models import Permission, User
 from django.test import TestCase
 from django.urls import reverse
 
-from .models import UserProfile
+from .models import Product, UserProfile
 from .permission_forms import StaffAccessForm
-from .stocktake_models import StocktakeSession, StocktakeZone
+from .stocktake_models import StocktakeCount, StocktakeSession, StocktakeZone
 
 
 class GranularStocktakeEntryTests(TestCase):
@@ -33,6 +33,49 @@ class GranularStocktakeEntryTests(TestCase):
         self.zone = StocktakeZone.objects.create(session=self.session, name="Main shelf")
         self.zone.assigned_users.add(self.counter)
         self.client.force_login(self.counter)
+
+    def test_assigned_counter_may_count_by_packs_without_editing_product_pack_setup(self):
+        product = Product.objects.create(
+            name="Pack Test", barcode="TEST-123", selling_price="100.00",
+        )
+        response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": product.barcode,
+            "units_per_pack": "12",
+            "pack_count": "2",
+            "loose_units": "3",
+            "count_entry_mode": "packs",
+            "good_quantity": "27",
+        })
+        self.assertEqual(response.status_code, 200)
+        count = StocktakeCount.objects.get(product=product, zone=self.zone)
+        self.assertEqual(count.good_quantity, 27)
+        self.assertEqual(count.pack_count_entered, 2)
+        self.assertEqual(count.loose_units_entered, 3)
+        self.assertEqual(count.units_per_pack_snapshot, 12)
+        product.refresh_from_db()
+        self.assertIsNone(product.units_per_pack)
+
+    def test_assigned_counter_may_correct_count_pack_size_without_product_edit_access(self):
+        product = Product.objects.create(
+            name="Pack Correction", barcode="TEST-456", selling_price="100.00",
+        )
+        count = StocktakeCount.objects.create(
+            session=self.session, zone=self.zone, product=product,
+            good_quantity=4, approved_good_quantity=4, counted_by=self.counter,
+        )
+        response = self.client.post(reverse("stocktake_edit_record", args=[count.pk]), {
+            "units_per_pack": "10",
+            "pack_count": "3",
+            "loose_units": "2",
+            "count_entry_mode": "packs",
+            "good_quantity": "32",
+        })
+        self.assertEqual(response.status_code, 200)
+        count.refresh_from_db()
+        self.assertEqual(count.good_quantity, 32)
+        self.assertEqual(count.units_per_pack_snapshot, 10)
+        product.refresh_from_db()
+        self.assertIsNone(product.units_per_pack)
 
     def test_counter_permission_can_open_stocktake_list_detail_and_count_page(self):
         self.assertEqual(self.client.get(reverse("stocktake_list")).status_code, 200)
