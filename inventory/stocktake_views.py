@@ -309,7 +309,7 @@ def stocktake_save_count(request, zone_id):
 
     values, pack_entry, quantity_error = _parse_stocktake_entry(request.POST, units_per_pack)
     if quantity_error:
-        return JsonResponse({"error": quantity_error}, status=400)
+        return JsonResponse({"error": quantity_error, "barcode_like_quantity": "barcode" in quantity_error.lower()}, status=400)
 
     try:
         with transaction.atomic():
