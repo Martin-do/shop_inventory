@@ -252,10 +252,15 @@ def stocktake_count_zone(request, zone_id):
             | Q(product__category__name__icontains=query)
             | Q(counted_by__username__icontains=query)
         )
+    removed_counts = (
+        zone.removed_counts.filter(restored_at__isnull=True)
+        .select_related("product", "removed_by").order_by("-removed_at")[:30]
+    )
     return render(
         request,
         "inventory/stocktake_count.html",
-        {"zone": zone, "session": zone.session, "recent": recent, "count_search_query": query},
+        {"zone": zone, "session": zone.session, "recent": recent,
+         "removed_counts": removed_counts, "count_search_query": query},
     )
 
 
