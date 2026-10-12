@@ -190,60 +190,53 @@ class OpeningStocktakeTests(TestCase):
         self.assertEqual(payload["existing_count"]["reserved_quantity"], 3)
         self.assertEqual(payload["existing_count"]["note"], "Needs recount")
 
-    def test_saving_existing_count_updates_instead_of_creating_duplicate(self):
+    def test_rescan_cannot_overwrite_existing_count(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
         self.session.save(update_fields=["status"])
         existing = StocktakeCount.objects.create(
-            session=self.session,
-            zone=self.zone,
-            product=self.product,
-            good_quantity=5,
-            approved_good_quantity=5,
-            counted_by=self.clerk,
+            session=self.session, zone=self.zone, product=self.product,
+            good_quantity=5, approved_good_quantity=5, counted_by=self.clerk,
         )
         self.client.force_login(self.clerk)
+
         response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
             "barcode": self.product.barcode,
-            "good_quantity": 13,
-            "damaged_quantity": 1,
-            "expired_quantity": 0,
-            "reserved_quantity": 2,
-            "note": "Corrected physical count",
+            "good_quantity": "13",
+            "damaged_quantity": "1",
+            "reserved_quantity": "2",
+            "note": "Mistaken second entry",
         })
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 409)
+        self.assertTrue(response.json()["already_counted"])
+        self.assertEqual(response.json()["count_id"], existing.pk)
         self.assertEqual(StocktakeCount.objects.count(), 1)
         existing.refresh_from_db()
-        self.assertEqual(existing.good_quantity, 13)
-        self.assertEqual(existing.damaged_quantity, 1)
-        self.assertEqual(existing.reserved_quantity, 2)
-        self.assertEqual(existing.note, "Corrected physical count")
-        payload = response.json()
-        self.assertEqual(payload["barcode_display"], self.product.barcode)
-        self.assertEqual(payload["category"], "")
+        self.assertEqual(existing.good_quantity, 5)
+        self.assertEqual(existing.note, "")
 
-    def test_manual_barcode_count_update_keeps_no_barcode_display(self):
+    def test_manual_barcode_rescan_flags_existing_and_preserves_no_barcode_label(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
         self.session.save(update_fields=["status"])
         product = Product.objects.create(
-            name="Loose Rice",
-            barcode="MANUAL-ABC123",
+            name="Loose Rice", barcode="MANUAL-ABC123",
             selling_price=Decimal("1200.00"),
         )
         StocktakeCount.objects.create(
-            session=self.session,
-            zone=self.zone,
-            product=product,
-            good_quantity=4,
-            approved_good_quantity=4,
-            counted_by=self.clerk,
+            session=self.session, zone=self.zone, product=product,
+            good_quantity=4, approved_good_quantity=4, counted_by=self.clerk,
         )
         self.client.force_login(self.clerk)
-        response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
-            "barcode": product.barcode,
-            "good_quantity": 6,
+        save = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": product.barcode, "good_quantity": "6",
         })
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["barcode_display"], "No barcode")
+        self.assertEqual(save.status_code, 409)
+        lookup = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": product.barcode, "lookup_only": "1",
+        })
+        self.assertEqual(lookup.status_code, 200)
+        self.assertEqual(lookup.json()["barcode_display"], "No barcode")
+        self.assertTrue(lookup.json()["already_counted"])
+        self.assertEqual(lookup.json()["existing_count"]["good_quantity"], 4)
 
     def test_recent_count_has_edit_action(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
@@ -615,24 +608,24 @@ class OpeningStocktakeTests(TestCase):
             "is_historical_entry": False,
         })
 
-    def test_pack_count_rejects_loose_units_equal_to_or_above_pack_size(self):
+    def test_pack_count_allows_all_loose_units_without_fake_full_packs(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
         self.session.save(update_fields=["status"])
         self.product.units_per_pack = 12
         self.product.save(update_fields=["units_per_pack"])
         self.client.force_login(self.clerk)
-
         response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
             "barcode": self.product.barcode,
             "count_entry_mode": "packs",
-            "pack_count": "2",
-            "loose_units": "12",
-            "good_quantity": "0",
+            "pack_count": "0",
+            "loose_units": "24",
+            "good_quantity": "24",
         })
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("Loose units must be fewer than 12", response.json()["error"])
-        self.assertFalse(StocktakeCount.objects.filter(product=self.product, zone=self.zone).exists())
+        self.assertEqual(response.status_code, 200)
+        count = StocktakeCount.objects.get(product=self.product, zone=self.zone)
+        self.assertEqual(count.good_quantity, 24)
+        self.assertEqual(count.pack_count_entered, 0)
+        self.assertEqual(count.loose_units_entered, 24)
 
     def test_stocktake_search_returns_units_per_pack(self):
         self.session.status = StocktakeSession.STATUS_COUNTING
@@ -655,7 +648,7 @@ class OpeningStocktakeTests(TestCase):
         response = self.client.get(reverse("stocktake_count_zone", args=[self.zone.pk]))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Enter pack breakdown")
+        self.assertNotContains(response, "How are you counting the sellable stock?")
         self.assertContains(response, "How many units are in one full pack?")
         self.assertContains(response, "How many full packs?")
         self.assertContains(response, "How many loose units?")
@@ -663,5 +656,171 @@ class OpeningStocktakeTests(TestCase):
         self.assertContains(response, 'name="units_per_pack"')
         self.assertContains(response, 'name="pack_count"')
         self.assertContains(response, 'name="loose_units"')
-        self.assertContains(response, 'data-unit-total-field')
+        self.assertContains(response, 'type="hidden" name="count_entry_mode"')
         self.assertContains(response, "Existing total remains authoritative")
+
+
+    def test_default_pack_fields_accept_units_without_pack_size(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        self.client.force_login(self.clerk)
+        response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": self.product.barcode, "count_entry_mode": "units",
+            "units_per_pack": "", "pack_count": "0", "loose_units": "17",
+            "good_quantity": "17",
+        })
+        self.assertEqual(response.status_code, 200)
+        count = StocktakeCount.objects.get(product=self.product, zone=self.zone)
+        self.assertEqual(count.good_quantity, 17)
+        self.assertEqual(count.count_entry_mode, "units")
+        self.assertIsNone(self.product.units_per_pack)
+
+    def test_default_pack_fields_require_size_for_positive_pack_count(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        self.client.force_login(self.clerk)
+        response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": self.product.barcode, "count_entry_mode": "units",
+            "pack_count": "2", "loose_units": "3", "good_quantity": "3",
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(StocktakeCount.objects.exists())
+
+    def test_counted_product_in_other_zone_requires_explicit_confirmation(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        elsewhere = StocktakeZone.objects.create(session=self.session, name="Storage")
+        elsewhere.assigned_users.add(self.clerk)
+        StocktakeCount.objects.create(
+            session=self.session, zone=elsewhere, product=self.product,
+            good_quantity=9, approved_good_quantity=9, counted_by=self.clerk,
+        )
+        self.client.force_login(self.clerk)
+
+        lookup = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": self.product.barcode, "lookup_only": "1",
+        })
+        self.assertEqual(lookup.json()["other_zone_counts"][0]["zone"], "Storage")
+        response = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": self.product.barcode, "good_quantity": "6",
+        })
+        self.assertEqual(response.status_code, 409)
+        self.assertTrue(response.json()["other_zone_counted"])
+        self.assertFalse(StocktakeCount.objects.filter(zone=self.zone).exists())
+
+        allowed = self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": self.product.barcode, "good_quantity": "6",
+            "confirm_other_zone": "1",
+        })
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(StocktakeCount.objects.filter(product=self.product).count(), 2)
+
+    def test_remove_and_restore_stocktake_count_with_audit(self):
+        from .stocktake_models import StocktakeRemovedCount, StocktakeEvent
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        count = StocktakeCount.objects.create(
+            session=self.session, zone=self.zone, product=self.product,
+            good_quantity=64, approved_good_quantity=64, counted_by=self.clerk,
+            count_entry_mode="packs", pack_count_entered=5,
+            loose_units_entered=4, units_per_pack_snapshot=12,
+        )
+        self.client.force_login(self.clerk)
+        remove = self.client.post(reverse("stocktake_remove_count", args=[count.pk]), {
+            "reason": "Duplicate entry confirmed",
+        })
+        self.assertEqual(remove.status_code, 200)
+        self.assertFalse(StocktakeCount.objects.filter(pk=count.pk).exists())
+        self.assertEqual(self.session.total_good_units, 0)
+        removed = StocktakeRemovedCount.objects.get()
+        self.assertEqual(removed.snapshot["good_quantity"], 64)
+        self.assertEqual(removed.reason, "Duplicate entry confirmed")
+        self.assertTrue(StocktakeEvent.objects.filter(event="count_removed").exists())
+        self.assertEqual(self.product.stock_on_hand, 0)
+
+        restore = self.client.post(reverse("stocktake_restore_count", args=[removed.pk]))
+        self.assertEqual(restore.status_code, 200)
+        restored = StocktakeCount.objects.get()
+        self.assertEqual(restored.good_quantity, 64)
+        self.assertEqual(restored.pack_count_entered, 5)
+        self.assertEqual(restored.units_per_pack_snapshot, 12)
+        self.assertEqual(self.session.total_good_units, 64)
+        removed.refresh_from_db()
+        self.assertEqual(removed.restored_count_id, restored.pk)
+        self.assertTrue(StocktakeEvent.objects.filter(event="count_restored").exists())
+        self.assertEqual(
+            self.client.post(reverse("stocktake_restore_count", args=[removed.pk])).status_code, 409
+        )
+
+    def test_cannot_restore_removed_count_if_new_count_exists(self):
+        from .stocktake_models import StocktakeRemovedCount
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        original = StocktakeCount.objects.create(
+            session=self.session, zone=self.zone, product=self.product,
+            good_quantity=8, approved_good_quantity=8, counted_by=self.clerk,
+        )
+        self.client.force_login(self.clerk)
+        self.client.post(reverse("stocktake_remove_count", args=[original.pk]), {
+            "reason": "Mistaken count",
+        })
+        self.client.post(reverse("stocktake_save_count", args=[self.zone.pk]), {
+            "barcode": self.product.barcode, "good_quantity": "17",
+        })
+        removed = StocktakeRemovedCount.objects.get()
+        response = self.client.post(reverse("stocktake_restore_count", args=[removed.pk]))
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(StocktakeCount.objects.get().good_quantity, 17)
+
+    def test_removal_rejects_short_reason_or_finished_zone(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        count = StocktakeCount.objects.create(
+            session=self.session, zone=self.zone, product=self.product,
+            good_quantity=5, approved_good_quantity=5, counted_by=self.clerk,
+        )
+        self.client.force_login(self.clerk)
+        self.assertEqual(self.client.post(
+            reverse("stocktake_remove_count", args=[count.pk]), {"reason": "bad"},
+        ).status_code, 400)
+        self.zone.is_complete = True
+        self.zone.save(update_fields=["is_complete"])
+        self.assertEqual(self.client.post(
+            reverse("stocktake_remove_count", args=[count.pk]), {"reason": "A proper reason"},
+        ).status_code, 409)
+        self.assertTrue(StocktakeCount.objects.filter(pk=count.pk).exists())
+
+    def test_staff_cannot_remove_unassigned_zone_count(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        count = StocktakeCount.objects.create(
+            session=self.session, zone=self.zone, product=self.product,
+            good_quantity=5, approved_good_quantity=5, counted_by=self.clerk,
+        )
+        self.client.force_login(self.other)
+        response = self.client.post(reverse("stocktake_remove_count", args=[count.pk]), {
+            "reason": "Wrong product",
+        })
+        self.assertIn(response.status_code, [302, 403])
+        self.assertTrue(StocktakeCount.objects.filter(pk=count.pk).exists())
+
+    def test_stocktake_new_product_warns_for_matching_name_variant(self):
+        self.session.status = StocktakeSession.STATUS_COUNTING
+        self.session.save(update_fields=["status"])
+        self.client.force_login(self.clerk)
+        url = reverse("stocktake_quick_product", args=[self.zone.pk])
+        response = self.client.post(url, {
+            "name": "  Milk  ", "barcode": "",
+            "good_quantity": "4", "count_entry_mode": "units",
+        })
+        self.assertEqual(response.status_code, 409)
+        self.assertTrue(response.json()["similar_products"])
+        self.assertEqual(Product.objects.count(), 1)
+
+        # Staff may explicitly confirm genuinely distinct products.
+        confirmed = self.client.post(url, {
+            "name": "Milk", "barcode": "", "good_quantity": "4",
+            "count_entry_mode": "units", "confirm_similar_product": "1",
+        })
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual(Product.objects.count(), 2)
