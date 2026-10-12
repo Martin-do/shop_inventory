@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.models import User
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -98,22 +98,34 @@ def _parse_stocktake_entry(post_data, units_per_pack=None):
         "units_per_pack_snapshot": None,
     }
     if mode == "units":
+        # Default stocktake form has no dropdown: when a product has no pack size,
+        # its loose-unit input is the entire sellable count.
+        if "loose_units" in post_data:
+            try:
+                pack_count = int(str(post_data.get("pack_count", 0) or 0).strip())
+                loose_units = int(str(post_data.get("loose_units", 0) or 0).strip())
+            except (TypeError, ValueError):
+                return None, None, "Full packs and loose units must be whole numbers."
+            if pack_count != 0:
+                return None, None, "Enter units in one full pack before counting any full packs."
+            if loose_units < 0 or loose_units > MAX_STOCKTAKE_QUANTITY:
+                return None, None, "Loose units must be between 0 and 9,999."
+            values["good_quantity"] = loose_units
         return values, entry, None
 
     if not units_per_pack or units_per_pack < 2:
-        return None, None, "Set Units per pack before counting this product by packs."
+        return None, None, "Enter how many units are in one full pack."
 
     try:
         pack_count = int(str(post_data.get("pack_count", 0) or 0).strip())
         loose_units = int(str(post_data.get("loose_units", 0) or 0).strip())
     except (TypeError, ValueError):
-        return None, None, "Pack count and loose units must be whole numbers."
+        return None, None, "Full packs and loose units must be whole numbers."
 
     if pack_count < 0 or loose_units < 0:
-        return None, None, "Pack count and loose units cannot be negative."
-    if loose_units >= units_per_pack:
-        return None, None, f"Loose units must be fewer than {units_per_pack}; otherwise add another full pack."
-
+        return None, None, "Full packs and loose units cannot be negative."
+    # A partially opened package can leave more than one pack's worth of
+    # genuinely loose pieces. Do not fabricate sealed/full packs by normalizing.
     total = (pack_count * units_per_pack) + loose_units
     if total > MAX_STOCKTAKE_QUANTITY:
         return None, None, (
@@ -240,10 +252,15 @@ def stocktake_count_zone(request, zone_id):
             | Q(product__category__name__icontains=query)
             | Q(counted_by__username__icontains=query)
         )
+    removed_counts = (
+        zone.removed_counts.filter(restored_at__isnull=True)
+        .select_related("product", "removed_by").order_by("-removed_at")[:30]
+    )
     return render(
         request,
         "inventory/stocktake_count.html",
-        {"zone": zone, "session": zone.session, "recent": recent, "count_search_query": query},
+        {"zone": zone, "session": zone.session, "recent": recent,
+         "removed_counts": removed_counts, "count_search_query": query},
     )
 
 
@@ -260,38 +277,66 @@ def stocktake_save_count(request, zone_id):
     if not product:
         return JsonResponse({"unknown": True, "barcode": barcode}, status=404)
 
+    # Count creation is deliberately create-only. Editing an existing count must
+    # use the explicit edit-record endpoint; never silently overwrite on a rescan.
+    existing = StocktakeCount.objects.filter(session=zone.session, zone=zone, product=product).first()
+    if existing:
+        return JsonResponse({
+            "error": "Already counted in this zone. Choose Edit existing count to make a correction.",
+            "already_counted": True,
+            "count_id": existing.pk,
+            "good_quantity": existing.good_quantity,
+        }, status=409)
+
+    elsewhere = list(
+        StocktakeCount.objects.filter(session=zone.session, product=product)
+        .exclude(zone=zone)
+        .select_related("zone")
+        .values("zone__name", "good_quantity")[:20]
+    )
+    if elsewhere and request.POST.get("confirm_other_zone") != "1":
+        return JsonResponse({
+            "error": "Already counted in another zone. Confirm this is additional physical stock before saving.",
+            "other_zone_counted": True,
+            "other_zones": [{"zone": row["zone__name"], "good_quantity": row["good_quantity"]} for row in elsewhere],
+        }, status=409)
+
     units_per_pack, pack_changed, pack_error = _resolve_units_per_pack(request.POST, product.units_per_pack)
     if pack_error:
         return JsonResponse({"error": pack_error}, status=400)
-    if pack_changed:
-        if not has_access(request.user, "edit_products"):
-            return JsonResponse({"error": "You do not have permission to change this product's pack size."}, status=403)
-        product.units_per_pack = units_per_pack
-        product.save(update_fields=["units_per_pack", "updated_at"])
-
+    # Every assigned counter may use the observed pack size for this count.
+    # Only product editors may also update the catalogue pack configuration.
     values, pack_entry, quantity_error = _parse_stocktake_entry(request.POST, units_per_pack)
     if quantity_error:
         return JsonResponse({"error": quantity_error, "barcode_like_quantity": "barcode" in quantity_error.lower()}, status=400)
 
-    count, created = StocktakeCount.objects.update_or_create(
-        session=zone.session,
-        zone=zone,
-        product=product,
-        defaults={
-            **values,
-            **pack_entry,
-            "approved_good_quantity": values["good_quantity"],
-            "counted_by": request.user,
-            "note": request.POST.get("note", "").strip()[:240],
-            "status": StocktakeCount.STATUS_COUNTED,
-        },
-    )
+    try:
+        with transaction.atomic():
+            count = StocktakeCount.objects.create(
+                session=zone.session, zone=zone, product=product,
+                **values, **pack_entry,
+                approved_good_quantity=values["good_quantity"],
+                counted_by=request.user,
+                note=request.POST.get("note", "").strip()[:240],
+                status=StocktakeCount.STATUS_COUNTED,
+            )
+    except IntegrityError:
+        # A second browser/scanner may have counted it between lookup and save.
+        return JsonResponse({
+            "error": "This product was just counted in this zone. Scan again to view the recorded count.",
+            "already_counted": True,
+        }, status=409)
+
+    if pack_changed and has_access(request.user, "edit_products"):
+        product.units_per_pack = units_per_pack
+        product.save(update_fields=["units_per_pack", "updated_at"])
+
     _event(
         zone.session,
         request.user,
         "count_saved",
         f"Count saved for {product.name} in {zone.name}.",
-        {"count_id": count.pk, "created": created, **values, **pack_entry},
+        {"count_id": count.pk, "created": True, **values, **pack_entry},
     )
     return JsonResponse({
         "ok": True,
