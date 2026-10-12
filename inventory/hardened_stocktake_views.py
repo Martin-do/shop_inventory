@@ -46,6 +46,11 @@ def stocktake_save_count(request, zone_id):
         zone=zone,
         product=product,
     ).first()
+    other_zone_counts = list(
+        StocktakeCount.objects.filter(session=zone.session, product=product)
+        .exclude(zone=zone).select_related("zone", "counted_by")
+        .order_by("zone__name")
+    )
     started_at = zone.session.started_at or zone.session.created_at
     manual_adjustment = (
         product.movements.filter(
@@ -86,8 +91,20 @@ def stocktake_save_count(request, zone_id):
             "view_cost_price": can_view_cost_price,
             "change_cost_price": can_change_cost_price,
         },
+        "already_counted": bool(existing_count),
+        "other_zone_counts": [
+            {
+                "zone": row.zone.name, "zone_id": row.zone_id,
+                "good_quantity": row.good_quantity,
+                "counted_by": row.counted_by.username,
+                "counted_at": row.counted_at.isoformat(),
+            }
+            for row in other_zone_counts
+        ],
         "existing_count": {
             "id": existing_count.pk,
+            "counted_by": existing_count.counted_by.username,
+            "counted_at": existing_count.counted_at.isoformat(),
             "good_quantity": existing_count.good_quantity,
             "damaged_quantity": existing_count.damaged_quantity,
             "expired_quantity": existing_count.expired_quantity,
@@ -126,7 +143,22 @@ def stocktake_quick_product(request, zone_id):
 
     barcode = supplied_barcode or _generate_internal_barcode()
     if supplied_barcode and Product.objects.filter(barcode=barcode).exists():
-        return JsonResponse({"error": "That barcode already belongs to a product. Use the barcode lookup instead."}, status=409)
+        matched = Product.objects.filter(barcode=barcode).first()
+        return JsonResponse({
+            "error": "That barcode already belongs to a product. Use the barcode lookup instead.",
+            "existing_product": {"name": matched.name, "barcode": matched.barcode},
+        }, status=409)
+
+    variant = request.POST.get("variant", "").strip()
+    similar = list(
+        Product.objects.filter(name__iexact=name, variant__iexact=variant)
+        .values("id", "name", "barcode", "variant")[:8]
+    )
+    if similar and request.POST.get("confirm_similar_product") != "1":
+        return JsonResponse({
+            "error": "A product with this name and size already exists. Review before creating another.",
+            "similar_products": similar,
+        }, status=409)
 
     try:
         selling_price = Decimal(request.POST.get("selling_price", "0") or "0")
