@@ -27,8 +27,8 @@
       {% for item in sale.items.all %}
         <tr>
           <td>{{ item.product.name }}{% if item.product.variant %} ({{ item.product.variant }}){% endif %}<small>{{ item.product.barcode }}</small></td>
-          <td>{{ item.quantity }}</td>
-          <td>₦{{ item.unit_price|intcomma }}</td>
+          <td>{{ item.sale_quantity }} {{ item.get_sale_unit_display|lower }}{{ item.sale_quantity|pluralize }}{% if item.sale_unit == "pack" %}<small>{{ item.quantity }} base units{% if item.units_per_pack_snapshot %} · {{ item.units_per_pack_snapshot }}/pack{% endif %}</small>{% endif %}</td>
+          <td>₦{{ item.unit_price|intcomma }} / {{ item.get_sale_unit_display|lower }}</td>
           <td>₦{{ item.line_total|intcomma }}</td>
         </tr>
       {% endfor %}

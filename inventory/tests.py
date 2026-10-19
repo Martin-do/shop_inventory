@@ -297,6 +297,45 @@ class CheckoutTests(TestCase):
         self.assertEqual(sale.status, Sale.STATUS_REVERTED)
         self.assertEqual(self.product.stock_on_hand, 5)
 
+    def test_legacy_checkout_can_sell_full_packs_and_deduct_base_units(self):
+        self.product.units_per_pack = 2
+        self.product.pack_selling_price = Decimal("18.00")
+        self.product.save(update_fields=["units_per_pack", "pack_selling_price"])
+
+        response = self.client.post(reverse("pos_add"), {
+            "barcode": "4001",
+            "sale_unit": "pack",
+            "quantity": 2,
+        })
+        self.assertRedirects(response, reverse("pos"))
+
+        response = self.client.post(reverse("pos_checkout"), {
+            "amount_paid": "36.00",
+            "cashier_name": "Sam",
+        })
+        sale = Sale.objects.get()
+        item = sale.items.get()
+        self.assertRedirects(response, reverse("sale_receipt", args=[sale.pk]))
+        self.assertEqual(sale.total, Decimal("36.00"))
+        self.assertEqual(item.sale_unit, "pack")
+        self.assertEqual(item.sale_quantity, 2)
+        self.assertEqual(item.quantity, 4)
+        self.assertEqual(item.units_per_pack_snapshot, 2)
+        self.assertEqual(item.unit_price, Decimal("18.00"))
+        self.assertEqual(self.product.stock_on_hand, 1)
+
+    def test_legacy_cart_checks_combined_pack_and_unit_stock(self):
+        self.product.units_per_pack = 2
+        self.product.save(update_fields=["units_per_pack"])
+        self.client.post(reverse("pos_add"), {
+            "barcode": "4001", "sale_unit": "pack", "quantity": 2,
+        })
+        self.client.post(reverse("pos_add"), {
+            "barcode": "4001", "sale_unit": "unit", "quantity": 2,
+        })
+        lines, _total = __import__("inventory.views", fromlist=["_cart_lines"])._cart_lines(self.client.session["cart"])
+        self.assertEqual(sum(line["quantity"] for line in lines), 4)
+
     def test_cannot_revert_already_reverted_sale(self):
         self._add_to_cart(1)
         self.client.post(reverse("pos_checkout"), {"amount_paid": "10.00", "cashier_name": "Sam"})
@@ -522,12 +561,17 @@ class RoleAndOfflineTests(TestCase):
         self.assertEqual(receipt.lines.get(product=new_prod).quantity_received, 20)
 
     def test_api_active_catalog(self):
+        self.product.units_per_pack = 12
+        self.product.pack_selling_price = Decimal("270.00")
+        self.product.save(update_fields=["units_per_pack", "pack_selling_price"])
         self.client.login(username="cashier_user", password="pw")
         response = self.client.get(reverse("api_active_catalog"))
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIn("products", data)
-        self.assertTrue(any(p["barcode"] == "7001" for p in data["products"]))
+        item = next(p for p in data["products"] if p["barcode"] == "7001")
+        self.assertEqual(item["units_per_pack"], 12)
+        self.assertEqual(item["pack_price"], 270.0)
 
     def test_api_sync_offline_sales(self):
         self.client.login(username="cashier_user", password="pw")

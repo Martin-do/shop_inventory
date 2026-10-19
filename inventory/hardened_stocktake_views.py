@@ -10,7 +10,7 @@ from .access_control import has_access
 from .audit_signals import log_event
 from .models import AuditLog, Category, Product, StockMovement, UserProfile
 from .stocktake_models import StocktakeCount, StocktakeZone
-from .stocktake_views import _can_access_zone, _event, stocktake_save_count as legacy_save_count
+from .stocktake_views import _can_access_zone, _event, _parse_stocktake_entry, _resolve_units_per_pack, stocktake_save_count as legacy_save_count
 from .views import role_required
 
 
@@ -46,6 +46,11 @@ def stocktake_save_count(request, zone_id):
         zone=zone,
         product=product,
     ).first()
+    other_zone_counts = list(
+        StocktakeCount.objects.filter(session=zone.session, product=product)
+        .exclude(zone=zone).select_related("zone", "counted_by")
+        .order_by("zone__name")
+    )
     started_at = zone.session.started_at or zone.session.created_at
     manual_adjustment = (
         product.movements.filter(
@@ -72,6 +77,9 @@ def stocktake_save_count(request, zone_id):
         "category": product.category.name if product.category else "",
         "selling_price": str(product.selling_price),
         "reorder_level": product.reorder_level,
+        "units_per_pack": product.units_per_pack,
+        "pack_selling_price": str(product.pack_selling_price) if product.pack_selling_price is not None else "",
+        "effective_pack_selling_price": str(product.effective_pack_selling_price) if product.effective_pack_selling_price is not None else "",
         "live_stock": product.stock_on_hand,
         "manual_adjustment_during_stocktake": {
             "note": manual_adjustment.note,
@@ -83,14 +91,36 @@ def stocktake_save_count(request, zone_id):
             "view_cost_price": can_view_cost_price,
             "change_cost_price": can_change_cost_price,
         },
+        "already_counted": bool(existing_count),
+        "other_zone_counts": [
+            {
+                "zone": row.zone.name, "zone_id": row.zone_id,
+                "good_quantity": row.good_quantity,
+                "counted_by": row.counted_by.username,
+                "counted_at": row.counted_at.isoformat(),
+            }
+            for row in other_zone_counts
+        ],
         "existing_count": {
             "id": existing_count.pk,
+            "counted_by": existing_count.counted_by.username,
+            "counted_at": existing_count.counted_at.isoformat(),
             "good_quantity": existing_count.good_quantity,
             "damaged_quantity": existing_count.damaged_quantity,
             "expired_quantity": existing_count.expired_quantity,
             "reserved_quantity": existing_count.reserved_quantity,
             "note": existing_count.note,
             "status": existing_count.status,
+            "count_entry_mode": existing_count.count_entry_mode,
+            "pack_count_entered": existing_count.pack_count_entered,
+            "loose_units_entered": existing_count.loose_units_entered,
+            "units_per_pack_snapshot": existing_count.units_per_pack_snapshot,
+            "pack_equivalent": {
+                "packs": existing_count.good_quantity // product.units_per_pack,
+                "loose_units": existing_count.good_quantity % product.units_per_pack,
+                "units_per_pack": product.units_per_pack,
+                "is_historical_entry": existing_count.count_entry_mode == "packs",
+            } if product.units_per_pack else None,
         } if existing_count else None,
     }
     if can_view_cost_price:
@@ -113,11 +143,28 @@ def stocktake_quick_product(request, zone_id):
 
     barcode = supplied_barcode or _generate_internal_barcode()
     if supplied_barcode and Product.objects.filter(barcode=barcode).exists():
-        return JsonResponse({"error": "That barcode already belongs to a product. Use the barcode lookup instead."}, status=409)
+        matched = Product.objects.filter(barcode=barcode).first()
+        return JsonResponse({
+            "error": "That barcode already belongs to a product. Use the barcode lookup instead.",
+            "existing_product": {"name": matched.name, "barcode": matched.barcode},
+        }, status=409)
+
+    variant = request.POST.get("variant", "").strip()
+    similar = list(
+        Product.objects.filter(name__iexact=name, variant__iexact=variant)
+        .values("id", "name", "barcode", "variant")[:8]
+    )
+    if similar and request.POST.get("confirm_similar_product") != "1":
+        return JsonResponse({
+            "error": "A product with this name and size already exists. Review before creating another.",
+            "similar_products": similar,
+        }, status=409)
 
     try:
         selling_price = Decimal(request.POST.get("selling_price", "0") or "0")
         cost_price = Decimal(request.POST.get("cost_price", "0") or "0")
+        pack_price_raw = str(request.POST.get("pack_selling_price", "") or "").strip()
+        pack_selling_price = Decimal(pack_price_raw) if pack_price_raw else None
         reorder_level = max(0, int(request.POST.get("reorder_level", "5") or 5))
     except (InvalidOperation, TypeError, ValueError):
         return JsonResponse({"error": "Enter valid prices and reorder level."}, status=400)
@@ -126,16 +173,18 @@ def stocktake_quick_product(request, zone_id):
     if not has_access(request.user, "change_cost_price"):
         cost_price = Decimal("0.00")
 
-    if selling_price < 0 or cost_price < 0:
+    if selling_price < 0 or cost_price < 0 or (pack_selling_price is not None and pack_selling_price < 0):
         return JsonResponse({"error": "Prices cannot be negative."}, status=400)
 
-    try:
-        quantities = {
-            key: max(0, int(request.POST.get(key, 0) or 0))
-            for key in ("good_quantity", "damaged_quantity", "expired_quantity", "reserved_quantity")
-        }
-    except (TypeError, ValueError):
-        return JsonResponse({"error": "Stock quantities must be whole numbers."}, status=400)
+    units_per_pack, _, pack_error = _resolve_units_per_pack(request.POST, None)
+    if pack_error:
+        return JsonResponse({"error": pack_error}, status=400)
+    if pack_selling_price is not None and not units_per_pack:
+        return JsonResponse({"error": "Set Units per pack before setting a pack selling price."}, status=400)
+
+    quantities, pack_entry, quantity_error = _parse_stocktake_entry(request.POST, units_per_pack)
+    if quantity_error:
+        return JsonResponse({"error": quantity_error, "barcode_like_quantity": "barcode" in quantity_error.lower()}, status=400)
 
     category_name = request.POST.get("category", "").strip()
     category = None
@@ -149,6 +198,8 @@ def stocktake_quick_product(request, zone_id):
         selling_price=selling_price,
         cost_price=cost_price,
         reorder_level=reorder_level,
+        units_per_pack=units_per_pack,
+        pack_selling_price=pack_selling_price,
         category=category,
     )
     count = StocktakeCount.objects.create(
@@ -160,6 +211,10 @@ def stocktake_quick_product(request, zone_id):
         expired_quantity=quantities["expired_quantity"],
         reserved_quantity=quantities["reserved_quantity"],
         approved_good_quantity=quantities["good_quantity"],
+        count_entry_mode=pack_entry["count_entry_mode"],
+        pack_count_entered=pack_entry["pack_count_entered"],
+        loose_units_entered=pack_entry["loose_units_entered"],
+        units_per_pack_snapshot=pack_entry["units_per_pack_snapshot"],
         counted_by=request.user,
         note=request.POST.get("note", "").strip()[:240],
         status=StocktakeCount.STATUS_COUNTED,
@@ -180,7 +235,7 @@ def stocktake_quick_product(request, zone_id):
         request.user,
         "count_saved",
         f"Opening count saved for {product.name} in {zone.name}.",
-        {"count_id": count.pk, "created": True, **quantities},
+        {"count_id": count.pk, "created": True, **quantities, **pack_entry},
     )
     log_event(
         AuditLog.ACTION_CREATE,
@@ -191,6 +246,7 @@ def stocktake_quick_product(request, zone_id):
             "zone_id": zone.pk,
             "count_id": count.pk,
             **quantities,
+            **pack_entry,
         },
         actor=request.user,
     )
@@ -202,7 +258,11 @@ def stocktake_quick_product(request, zone_id):
         "barcode_display": supplied_barcode or "No barcode",
         "has_barcode": bool(supplied_barcode),
         "category": category.name if category else "",
+        "units_per_pack": product.units_per_pack,
+        "pack_selling_price": str(product.pack_selling_price) if product.pack_selling_price is not None else "",
+        "effective_pack_selling_price": str(product.effective_pack_selling_price) if product.effective_pack_selling_price is not None else "",
         "count_id": count.pk,
+        "count_entry": pack_entry,
         "quantities": quantities,
     })
 
@@ -221,18 +281,19 @@ def stocktake_edit_record(request, count_id):
     if not _can_access_zone(request.user, zone) or not zone.session.can_count or zone.is_complete:
         return JsonResponse({"error": "This stocktake record is no longer editable."}, status=403)
 
-    try:
-        quantities = {
-            key: max(0, int(request.POST.get(key, 0) or 0))
-            for key in ("good_quantity", "damaged_quantity", "expired_quantity", "reserved_quantity")
-        }
-    except (TypeError, ValueError):
-        return JsonResponse({"error": "Stock quantities must be whole numbers."}, status=400)
-
     note = request.POST.get("note", "").strip()[:240]
     can_edit_product = has_access(request.user, "edit_products")
     can_change_selling_price = has_access(request.user, "change_selling_price")
     can_change_cost_price = has_access(request.user, "change_cost_price")
+
+    units_per_pack, pack_changed, pack_error = _resolve_units_per_pack(request.POST, product.units_per_pack)
+    if pack_error:
+        return JsonResponse({"error": pack_error}, status=400)
+    # Count staff can specify the observed pack size without catalogue privileges.
+    # Product metadata changes still require edit_products below.
+    quantities, pack_entry, quantity_error = _parse_stocktake_entry(request.POST, units_per_pack)
+    if quantity_error:
+        return JsonResponse({"error": quantity_error, "barcode_like_quantity": "barcode" in quantity_error.lower()}, status=400)
 
     if can_edit_product:
         name = request.POST.get("name", product.name).strip()
@@ -265,15 +326,21 @@ def stocktake_edit_record(request, count_id):
         product.variant = request.POST.get("variant", product.variant).strip()
         product.category = category
         product.reorder_level = reorder_level
+        product.units_per_pack = units_per_pack
 
         if can_change_selling_price:
             try:
                 selling_price = Decimal(request.POST.get("selling_price", product.selling_price))
+                pack_price_raw = str(request.POST.get("pack_selling_price", "") or "").strip()
+                pack_selling_price = Decimal(pack_price_raw) if pack_price_raw else None
             except (InvalidOperation, TypeError, ValueError):
-                return JsonResponse({"error": "Enter a valid selling price."}, status=400)
-            if selling_price < 0:
-                return JsonResponse({"error": "Selling price cannot be negative."}, status=400)
+                return JsonResponse({"error": "Enter valid selling prices."}, status=400)
+            if selling_price < 0 or (pack_selling_price is not None and pack_selling_price < 0):
+                return JsonResponse({"error": "Selling prices cannot be negative."}, status=400)
+            if pack_selling_price is not None and not units_per_pack:
+                return JsonResponse({"error": "Set Units per pack before setting a pack selling price."}, status=400)
             product.selling_price = selling_price
+            product.pack_selling_price = pack_selling_price
 
         if can_change_cost_price:
             try:
@@ -291,6 +358,10 @@ def stocktake_edit_record(request, count_id):
     count.expired_quantity = quantities["expired_quantity"]
     count.reserved_quantity = quantities["reserved_quantity"]
     count.approved_good_quantity = quantities["good_quantity"]
+    count.count_entry_mode = pack_entry["count_entry_mode"]
+    count.pack_count_entered = pack_entry["pack_count_entered"]
+    count.loose_units_entered = pack_entry["loose_units_entered"]
+    count.units_per_pack_snapshot = pack_entry["units_per_pack_snapshot"]
     count.counted_by = request.user
     count.note = note
     count.status = StocktakeCount.STATUS_COUNTED
@@ -298,7 +369,8 @@ def stocktake_edit_record(request, count_id):
     count.approved_at = None
     count.save(update_fields=[
         "good_quantity", "damaged_quantity", "expired_quantity", "reserved_quantity",
-        "approved_good_quantity", "counted_by", "note", "status", "approved_by", "approved_at",
+        "approved_good_quantity", "count_entry_mode", "pack_count_entered", "loose_units_entered",
+        "units_per_pack_snapshot", "counted_by", "note", "status", "approved_by", "approved_at",
         "counted_at",
     ])
 
@@ -307,7 +379,7 @@ def stocktake_edit_record(request, count_id):
         request.user,
         "record_edited",
         f"Stocktake record updated for {product.name} in {zone.name}.",
-        {"count_id": count.pk, "product_id": product.pk, **quantities},
+        {"count_id": count.pk, "product_id": product.pk, **quantities, **pack_entry},
     )
 
     payload = {
@@ -320,7 +392,11 @@ def stocktake_edit_record(request, count_id):
         "category": product.category.name if product.category else "",
         "selling_price": str(product.selling_price),
         "reorder_level": product.reorder_level,
+        "units_per_pack": product.units_per_pack,
+        "pack_selling_price": str(product.pack_selling_price) if product.pack_selling_price is not None else "",
+        "effective_pack_selling_price": str(product.effective_pack_selling_price) if product.effective_pack_selling_price is not None else "",
         "live_stock": product.stock_on_hand,
+        "count_entry": pack_entry,
         "quantities": quantities,
         "note": count.note,
     }

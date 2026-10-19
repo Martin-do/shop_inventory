@@ -84,6 +84,10 @@ class StocktakeCount(models.Model):
     reserved_quantity = models.PositiveIntegerField(default=0)
     approved_good_quantity = models.PositiveIntegerField(default=0)
     first_count_quantity = models.PositiveIntegerField(default=0)
+    count_entry_mode = models.CharField(max_length=12, choices=[("units", "Total units"), ("packs", "Packs + loose units")], default="units")
+    pack_count_entered = models.PositiveIntegerField(null=True, blank=True)
+    loose_units_entered = models.PositiveIntegerField(null=True, blank=True)
+    units_per_pack_snapshot = models.PositiveIntegerField(null=True, blank=True)
     recount_quantity = models.PositiveIntegerField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_COUNTED)
     note = models.CharField(max_length=240, blank=True)
@@ -105,6 +109,33 @@ class StocktakeCount(models.Model):
         if self.status == self.STATUS_APPROVED and self.approved_good_quantity == 0:
             self.approved_good_quantity = self.recount_quantity if self.recount_quantity is not None else self.good_quantity
         super().save(*args, **kwargs)
+
+
+class StocktakeRemovedCount(models.Model):
+    """Auditable snapshot of a count removed from an unfinished stocktake."""
+
+    session = models.ForeignKey(StocktakeSession, on_delete=models.PROTECT, related_name="removed_counts")
+    zone = models.ForeignKey(StocktakeZone, on_delete=models.PROTECT, related_name="removed_counts")
+    product = models.ForeignKey("inventory.Product", on_delete=models.PROTECT, related_name="removed_stocktake_counts")
+    original_count_id = models.PositiveIntegerField()
+    snapshot = models.JSONField(default=dict)
+    reason = models.CharField(max_length=240)
+    removed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="removed_stocktake_counts"
+    )
+    removed_at = models.DateTimeField(default=timezone.now)
+    restored_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="restored_stocktake_counts"
+    )
+    restored_at = models.DateTimeField(null=True, blank=True)
+    restored_count_id = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-removed_at"]
+
+    def __str__(self):
+        return f"Removed count {self.original_count_id} for {self.product.name}"
 
 
 class StocktakeEvent(models.Model):
