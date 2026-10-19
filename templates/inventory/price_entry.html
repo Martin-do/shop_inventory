@@ -216,13 +216,23 @@
     else if(u)setTimeout(()=>u.focus({preventScroll:true}),300);
   }
 
+  // Keep the whole card (price, pack toggle, Previous / Skip / Save & next) inside the
+  // part of the screen left above the on-screen keypad, so nothing needs scrolling.
+  function fitCard(){
+    if(!card)return;
+    const vv=window.visualViewport, vh=vv?vv.height:innerHeight;
+    const r=card.getBoundingClientRect();
+    const top=r.top+scrollY-8, bottomNeeded=r.bottom+scrollY-vh+10;
+    window.scrollTo(0,Math.max(0,Math.max(top,bottomNeeded)));
+  }
+  if(window.visualViewport)visualViewport.addEventListener('resize',()=>setTimeout(fitCard,60));
   async function go(i,dir){
     if(i<0)return;
     if(i>=items.length-2&&!exhausted){
       if(i>=items.length)await more(); else more();
     }
     if(i>items.length)return;
-    show(i,dir);window.scrollTo({top:0,behavior:reduce?'auto':'smooth'});
+    show(i,dir);setTimeout(fitCard,320);
   }
 
   function renderHistory(){
@@ -276,7 +286,7 @@
   });
   document.addEventListener('click',e=>{if(!e.target.closest('.pe-search'))results.hidden=true;});
 
-  renderHistory();progress();show(0,0);
+  renderHistory();progress();show(0,0);setTimeout(fitCard,400);setTimeout(fitCard,900);
 })();
 </script>
 {% endblock %}
