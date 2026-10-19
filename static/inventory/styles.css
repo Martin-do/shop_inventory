@@ -285,6 +285,12 @@ body.sidebar-collapsed .sidebar-user {
   color: var(--ink);
   align-items: center;
   justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.sidebar-toggle svg {
+  flex-shrink: 0;
 }
 
 .sidebar-scrim {
@@ -1226,7 +1232,10 @@ label {
     transition: transform .2s ease;
   }
 
-  .sidebar.is-open {
+  /* Must outrank `body.sidebar-collapsed .sidebar` above, or a collapsed
+     state remembered from a desktop visit keeps the menu shut on a phone. */
+  .sidebar.is-open,
+  body.sidebar-collapsed .sidebar.is-open {
     transform: translateX(0);
   }
 
@@ -1241,8 +1250,29 @@ label {
     display: revert;
   }
 
+  body.sidebar-collapsed .sidebar-brand {
+    justify-content: flex-start;
+    padding-left: revert;
+    padding-right: revert;
+  }
+
+  body.sidebar-collapsed .sidebar-link {
+    justify-content: flex-start;
+  }
+
+  body.sidebar-collapsed .sidebar-user {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: revert;
+  }
+
   .sidebar-toggle {
     display: flex;
+    transition: transform .2s ease;
+  }
+
+  .sidebar.is-open ~ .sidebar-toggle {
+    transform: translateX(272px);
   }
 
   .sidebar-scrim.is-open {

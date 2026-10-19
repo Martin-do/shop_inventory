@@ -188,3 +188,10 @@ class PriceEntryConcurrencyTests(TestCase):
     def test_anonymous_cannot_claim(self):
         from django.test import Client
         self.assertEqual(Client().get(reverse("price_entry_next")).status_code, 401)
+
+
+class MobileSidebarCssTests(TestCase):
+    def test_open_rule_outranks_collapsed_rule_on_mobile(self):
+        import pathlib
+        css = (pathlib.Path(__file__).resolve().parent.parent / "static/inventory/styles.css").read_text(encoding="utf-8")
+        self.assertIn("body.sidebar-collapsed .sidebar.is-open", css)

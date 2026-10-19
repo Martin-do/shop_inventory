@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Shop Inventory{% endblock %}</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="{% static 'inventory/styles.css' %}?v=20260926-1">
+  <link rel="stylesheet" href="{% static 'inventory/styles.css' %}?v=20261019-2">
   {% block extra_head %}{% endblock %}
 </head>
 <body class="app-shell{% if not user.is_authenticated %} app-shell-bare{% endif %}{% block body_class %}{% endblock %}">
@@ -64,6 +64,9 @@
       const open = () => { sidebar.classList.add("is-open"); scrim.classList.add("is-open"); toggle.setAttribute("aria-expanded", "true"); };
       toggle.addEventListener("click", () => sidebar.classList.contains("is-open") ? close() : open());
       scrim.addEventListener("click", close);
+      // Close after choosing a destination, and with Escape.
+      sidebar.addEventListener("click", (e) => { if (e.target.closest("a")) close(); });
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
     })();
 
     // Desktop sidebar collapse (icon rail), remembered per browser.
