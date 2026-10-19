@@ -130,6 +130,7 @@ URL_PERMISSION_MAP = {
     "dashboard": "view_sales_reports",
     "pos": "access_pos", "pos_add": "create_sale", "pos_remove": "create_sale", "pos_clear": "create_sale", "pos_checkout": "create_sale",
     "product_list": "view_products", "product_create": "create_products", "product_update": "edit_products", "product_toggle_active": "toggle_products", "product_delete": "delete_products",
+    "price_entry": "change_selling_price", "price_entry_save": "change_selling_price", "price_entry_search": "change_selling_price",
     "receive_stock": "receive_stock",
     "stock_receipt_create": "receive_stock", "stock_receipt_detail": "receive_stock", "stock_receipt_add_line": "receive_stock", "stock_receipt_remove_line": "receive_stock", "stock_receipt_submit": "receive_stock",
     "stock_receipt_review_line": "review_stock_receipts", "stock_receipt_apply": "apply_stock_receipts",

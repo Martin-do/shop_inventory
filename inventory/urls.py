@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import audit_views, granular_stocktake_views, receipt_views, security_views, staff_access_views, views
+from . import audit_views, granular_stocktake_views, price_entry_views, receipt_views, security_views, staff_access_views, views
 from .hardened_sync import api_sync_offline
 
 
@@ -11,6 +11,9 @@ urlpatterns = [
     path("products/<int:pk>/edit/", security_views.product_update, name="product_update"),
     path("products/<int:pk>/toggle/", views.product_toggle_active, name="product_toggle_active"),
     path("products/<int:pk>/delete/", security_views.product_delete, name="product_delete"),
+    path("products/prices/", price_entry_views.price_entry, name="price_entry"),
+    path("products/prices/save/", price_entry_views.price_entry_save, name="price_entry_save"),
+    path("products/prices/search/", price_entry_views.price_entry_search, name="price_entry_search"),
     path("stock/receive/", receipt_views.receipt_list, name="receive_stock"),
     path("stock/receipts/new/", receipt_views.receipt_create, name="stock_receipt_create"),
     path("stock/receipts/<int:receipt_id>/", receipt_views.receipt_detail, name="stock_receipt_detail"),

@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Enter prices{% endblock %}
+{% block content %}
+<style>
+.pe{max-width:620px;margin-inline:auto}
+.pe-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.pe-top h1{margin:0;font-size:22px}
+.pe-progress{font-family:var(--font-display);font-size:13px;color:var(--muted)}
+.pe-bar{height:6px;background:var(--line);border-radius:99px;overflow:hidden;margin-bottom:14px}
+.pe-bar span{display:block;height:100%;width:0;background:var(--accent);transition:width .35s ease}
+.pe-search{position:relative;margin-bottom:14px}
+.pe-search input{width:100%;font-size:16px;padding:12px 14px;border-radius:12px}
+.pe-results{position:absolute;z-index:20;left:0;right:0;top:100%;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.14);max-height:300px;overflow:auto}
+.pe-results button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:12px 14px;font:inherit;color:var(--ink);cursor:pointer}
+.pe-results button:last-child{border-bottom:0}
+.pe-results small{color:var(--muted)}
+.pe-stage{position:relative;overflow:hidden;border-radius:18px}
+.pe-card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px 18px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.pe-card.is-leaving{position:absolute;inset:0;pointer-events:none}
+.pe-badge{display:inline-block;font-size:12px;padding:3px 10px;border-radius:99px;background:var(--accent-tint,#e4f2ee);color:var(--accent-dark)}
+.pe-badge.edit{background:#fdf1d8;color:#8a5a00}
+.pe-name{font-family:var(--font-display);font-size:24px;line-height:1.2;margin:10px 0 4px;word-break:break-word}
+.pe-meta{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--muted);font-size:14px;margin-bottom:16px}
+.pe-meta b{color:var(--ink);font-weight:600}
+.pe-field label{display:block;font-size:14px;font-weight:600;margin:0 0 6px}
+.pe-field input{width:100%;font-size:26px;font-family:var(--font-display);padding:14px;border-radius:12px;border:2px solid var(--line);background:var(--bg)}
+.pe-field input:focus{outline:none;border-color:var(--accent)}
+.pe-field.pack input{font-size:20px;padding:11px 14px}
+.pe-pack{margin-top:14px;border-top:1px dashed var(--line);padding-top:12px}
+.pe-pack summary{cursor:pointer;color:var(--muted);font-size:14px;padding:4px 0}
+.pe-pack-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.pe-hint{font-size:13px;color:var(--muted);margin-top:6px}
+.pe-error{color:var(--danger);font-size:14px;min-height:20px;margin-top:10px}
+.pe-actions{display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-top:6px}
+.pe-actions .button{min-height:54px;font-size:16px;justify-content:center;white-space:nowrap}
+.pe-skip{display:block;margin:10px auto 0;background:none;border:0;color:var(--muted);text-decoration:underline;font:inherit;padding:8px;cursor:pointer}
+.pe-done{text-align:center;padding:36px 18px}
+.pe-done h2{margin:0 0 6px}
+.pe-history{margin-top:22px}
+.pe-history h2{font-size:16px;margin:0 0 8px}
+.pe-history ul{list-style:none;margin:0;padding:0;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.pe-history li{border-bottom:1px solid var(--line)}
+.pe-history li:last-child{border-bottom:0}
+.pe-history button{display:flex;justify-content:space-between;gap:10px;width:100%;background:none;border:0;padding:11px 14px;font:inherit;color:var(--ink);text-align:left;cursor:pointer}
+.pe-history .who{display:block;color:var(--muted);font-size:12px}
+.pe-history .price{font-family:var(--font-display);white-space:nowrap}
+.pe-saving{opacity:.6;pointer-events:none}
+@keyframes pe-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.shake{animation:pe-shake .3s}
+@media(max-width:600px){
+ .page{padding-inline:12px}
+ .pe-name{font-size:21px}
+ .pe-actions{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg) 22%);padding-top:14px;padding-bottom:max(8px,env(safe-area-inset-bottom))}
+}
+@media(prefers-reduced-motion:reduce){.pe-bar span{transition:none}.shake{animation:none}}
+</style>
+
+<div class="pe" id="pe">
+  <div class="pe-top">
+    <h1>Enter prices</h1>
+    <span class="pe-progress" id="pe-progress" aria-live="polite"></span>
+  </div>
+  <div class="pe-bar" aria-hidden="true"><span id="pe-bar"></span></div>
+
+  <div class="pe-search">
+    <input id="pe-search" type="search" inputmode="search" autocomplete="off" placeholder="Search a product to find or edit its price">
+    <div class="pe-results" id="pe-results" hidden></div>
+  </div>
+
+  <div class="pe-stage" id="pe-stage"></div>
+
+  <section class="pe-history">
+    <h2>Recently entered</h2>
+    <ul id="pe-history"></ul>
+    <p class="pe-hint" id="pe-history-empty" hidden>Nothing entered yet. Prices you save appear here; tap one to edit it.</p>
+  </section>
+</div>
+
+{{ queue|json_script:"pe-queue" }}
+{{ history|json_script:"pe-history-data" }}
+<script>
+(function(){
+  const csrf='{{ csrf_token }}';
+  const saveUrl='{% url "price_entry_save" %}', searchUrl='{% url "price_entry_search" %}';
+  const items=JSON.parse(document.getElementById('pe-queue').textContent);
+  let history=JSON.parse(document.getElementById('pe-history-data').textContent);
+  const totalAtStart={{ total_missing }};
+  const stage=document.getElementById('pe-stage');
+  const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let pos=0, savedCount=0, busy=false, card=null;
+  const naira=v=>v===''||v==null?'—':'₦'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  function progress(){
+    const left=items.filter(i=>!i.priced).length;
+    document.getElementById('pe-progress').textContent=left?left+' left to price':'All priced';
+    const done=Math.max(0,totalAtStart-left);
+    document.getElementById('pe-bar').style.width=(totalAtStart?Math.min(100,done/totalAtStart*100):100)+'%';
+  }
+
+  function buildCard(i){
+    const el=document.createElement('div');
+    if(i>=items.length){
+      el.className='pe-card pe-done';
+      el.innerHTML='<h2>All caught up</h2><p class="pe-hint">Every active product has a price. '+(savedCount?savedCount+' saved this session. ':'')+'New products will show up here when they are added.</p><div class="pe-actions" style="grid-template-columns:1fr 1fr"><button type="button" class="button" id="pe-back">Back</button><button type="button" class="button primary" id="pe-reload">Check for more</button></div>';
+      return el;
+    }
+    const p=items[i];
+    const meta=[];
+    if(p.barcode)meta.push('<span>Barcode <b>'+esc(p.barcode)+'</b></span>');
+    if(p.category)meta.push('<span>'+esc(p.category)+'</span>');
+    if(p.stock!==undefined)meta.push('<span>In stock <b>'+esc(p.stock)+'</b></span>');
+    if(p.cost_price!==undefined&&Number(p.cost_price)>0)meta.push('<span>Cost <b>'+naira(p.cost_price)+'</b></span>');
+    const hasPack=!!(p.units_per_pack||p.pack_selling_price);
+    el.className='pe-card';
+    el.innerHTML=
+      '<span class="pe-badge'+(p.priced?' edit':'')+'">'+(p.priced?'Editing price':'Needs a price')+'</span>'+
+      '<div class="pe-name">'+esc(p.name)+(p.variant?' <small style="color:var(--muted);font-weight:400">'+esc(p.variant)+'</small>':'')+'</div>'+
+      '<div class="pe-meta">'+meta.join('')+'</div>'+
+      '<form novalidate autocomplete="off">'+
+        '<div class="pe-field"><label for="pe-unit">Unit price (₦)</label><input id="pe-unit" name="selling_price" inputmode="decimal" enterkeyhint="next" placeholder="0.00" value="'+esc(p.selling_price)+'"></div>'+
+        '<details class="pe-pack"'+(hasPack?' open':'')+'><summary>Sold by the pack too? (optional)</summary>'+
+          '<div class="pe-pack-grid">'+
+            '<div class="pe-field pack"><label for="pe-upp">Units in a pack</label><input id="pe-upp" name="units_per_pack" inputmode="numeric" enterkeyhint="next" placeholder="e.g. 12" value="'+esc(p.units_per_pack)+'"></div>'+
+            '<div class="pe-field pack"><label for="pe-pack">Pack price (₦)</label><input id="pe-pack" name="pack_selling_price" inputmode="decimal" enterkeyhint="done" placeholder="Optional" value="'+esc(p.pack_selling_price)+'"></div>'+
+          '</div><div class="pe-hint">Leave the pack price empty to charge unit price × units in a pack.</div>'+
+        '</details>'+
+        '<div class="pe-error" id="pe-error" role="alert"></div>'+
+        '<div class="pe-actions"><button type="button" class="button" id="pe-prev"'+(i===0?' disabled':'')+'>← Previous</button><button type="submit" class="button primary" id="pe-next">Save &amp; next →</button></div>'+
+        (p.priced?'':'<button type="button" class="pe-skip" id="pe-skip">Skip for now</button>')+
+      '</form>';
+    return el;
+  }
+
+  function wire(el,i){
+    const form=el.querySelector('form');
+    const back=el.querySelector('#pe-back'), reload=el.querySelector('#pe-reload');
+    if(back)back.onclick=()=>go(pos-1,-1);
+    if(reload)reload.onclick=()=>location.reload();
+    if(!form)return;
+    const unit=form.querySelector('#pe-unit'), upp=form.querySelector('#pe-upp'), pk=form.querySelector('#pe-pack');
+    unit.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();form.requestSubmit();}});
+    upp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();pk.focus();}});
+    pk.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();form.requestSubmit();}});
+    el.querySelector('#pe-prev').onclick=()=>go(pos-1,-1);
+    const skip=el.querySelector('#pe-skip');if(skip)skip.onclick=()=>go(pos+1,1);
+    form.addEventListener('submit',e=>{e.preventDefault();save(form,i);});
+  }
+
+  function fail(form,msg){
+    const err=document.getElementById('pe-error');if(err)err.textContent=msg;
+    form.classList.remove('shake');void form.offsetWidth;form.classList.add('shake');
+    const u=form.querySelector('#pe-unit');if(u)u.focus();
+  }
+
+  async function save(form,i){
+    if(busy)return;
+    const p=items[i];
+    const unit=form.querySelector('#pe-unit').value.trim();
+    if(!unit||!(Number(unit)>0)){fail(form,'Enter a unit price, or tap Skip for now.');return;}
+    busy=true;form.classList.add('pe-saving');
+    const body=new FormData(form);body.set('product_id',p.id);
+    try{
+      const r=await fetch(saveUrl,{method:'POST',headers:{'X-CSRFToken':csrf},body});
+      const j=await r.json();
+      if(!r.ok){busy=false;form.classList.remove('pe-saving');fail(form,j.error||'Could not save. Try again.');return;}
+      const wasPriced=p.priced;
+      Object.assign(p,j.product);
+      if(!wasPriced)savedCount++;
+      if(j.history)pushHistory(j.history);
+      progress();busy=false;
+      go(pos+1,1);
+    }catch(err){busy=false;form.classList.remove('pe-saving');fail(form,'No connection. Your entry was not saved; try again.');}
+  }
+
+  function show(i,dir){
+    const next=buildCard(i);
+    const old=card;
+    stage.appendChild(next);
+    card=next;pos=i;wire(next,i);
+    if(old&&!reduce&&dir){
+      old.classList.add('is-leaving');
+      const w=stage.clientWidth||400;
+      old.animate([{transform:'translateX(0)',opacity:1},{transform:'translateX('+(-dir*w)+'px)',opacity:0}],{duration:280,easing:'ease',fill:'forwards'}).onfinish=()=>old.remove();
+      next.animate([{transform:'translateX('+(dir*w)+'px)',opacity:0},{transform:'translateX(0)',opacity:1}],{duration:280,easing:'ease'});
+    }else if(old){old.remove();}
+    const u=next.querySelector('#pe-unit');
+    if(u&&!matchMedia('(pointer:coarse)').matches)u.focus({preventScroll:true});
+    else if(u)setTimeout(()=>u.focus({preventScroll:true}),300);
+  }
+
+  function go(i,dir){
+    if(i<0||i>items.length)return;
+    show(i,dir);window.scrollTo({top:0,behavior:reduce?'auto':'smooth'});
+  }
+
+  function renderHistory(){
+    const ul=document.getElementById('pe-history');
+    document.getElementById('pe-history-empty').hidden=history.length>0;
+    ul.innerHTML=history.map((h,n)=>{
+      const pack=h.pack_selling_price?' · pack '+naira(h.pack_selling_price):'';
+      return '<li><button type="button" data-n="'+n+'"><span>'+esc(h.label)+'<span class="who">'+esc(h.by)+' · '+esc(h.at)+'</span></span><span class="price">'+naira(h.selling_price)+esc(pack)+'</span></button></li>';
+    }).join('');
+  }
+  function pushHistory(h){history.unshift(h);history=history.slice(0,15);renderHistory();}
+  document.getElementById('pe-history').addEventListener('click',async e=>{
+    const b=e.target.closest('button');if(!b)return;
+    const h=history[Number(b.dataset.n)];if(!h||!h.product_id)return;
+    await openProduct(h.product_id,h.label);
+  });
+
+  async function openProduct(id,label){
+    let idx=items.findIndex(x=>x.id===id);
+    if(idx<0){
+      const r=await fetch(searchUrl+'?q='+encodeURIComponent(label||''));const j=await r.json();
+      const found=(j.results||[]).find(x=>x.id===id);if(!found)return;
+      items.splice(pos+1,0,found);idx=pos+1;
+    }
+    go(idx,idx>=pos?1:-1);
+  }
+
+  const searchBox=document.getElementById('pe-search'), results=document.getElementById('pe-results');
+  let timer=null, seq=0;
+  searchBox.addEventListener('input',()=>{
+    clearTimeout(timer);const q=searchBox.value.trim();
+    if(q.length<2){results.hidden=true;return;}
+    timer=setTimeout(async()=>{
+      const my=++seq;
+      try{
+        const r=await fetch(searchUrl+'?q='+encodeURIComponent(q));const j=await r.json();
+        if(my!==seq)return;
+        results.innerHTML=(j.results||[]).map(p=>'<button type="button" data-id="'+p.id+'">'+esc(p.name)+(p.variant?' <small>'+esc(p.variant)+'</small>':'')+'<br><small>'+(p.priced?naira(p.selling_price):'No price yet')+(p.barcode?' · '+esc(p.barcode):'')+'</small></button>').join('')||'<button type="button" disabled>No match</button>';
+        results._data=j.results||[];results.hidden=false;
+      }catch(e){}
+    },220);
+  });
+  results.addEventListener('click',e=>{
+    const b=e.target.closest('button[data-id]');if(!b)return;
+    const p=(results._data||[]).find(x=>String(x.id)===b.dataset.id);if(!p)return;
+    const existing=items.findIndex(x=>x.id===p.id);
+    if(existing>=0){Object.assign(items[existing],p);go(existing,existing>=pos?1:-1);}
+    else{items.splice(pos+1,0,p);go(pos+1,1);}
+    results.hidden=true;searchBox.value='';
+  });
+  document.addEventListener('click',e=>{if(!e.target.closest('.pe-search'))results.hidden=true;});
+
+  renderHistory();progress();show(0,0);
+})();
+</script>
+{% endblock %}
