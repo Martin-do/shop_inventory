@@ -12,6 +12,7 @@ urlpatterns = [
     path("products/<int:pk>/toggle/", views.product_toggle_active, name="product_toggle_active"),
     path("products/<int:pk>/delete/", security_views.product_delete, name="product_delete"),
     path("products/prices/", price_entry_views.price_entry, name="price_entry"),
+    path("products/prices/next/", price_entry_views.price_entry_next, name="price_entry_next"),
     path("products/prices/save/", price_entry_views.price_entry_save, name="price_entry_save"),
     path("products/prices/search/", price_entry_views.price_entry_search, name="price_entry_search"),
     path("stock/receive/", receipt_views.receipt_list, name="receive_stock"),
