@@ -190,6 +190,12 @@ class PriceEntryConcurrencyTests(TestCase):
         self.assertEqual(Client().get(reverse("price_entry_next")).status_code, 401)
 
 
+class MobileSidebarCssTests(TestCase):
+    def test_open_rule_outranks_collapsed_rule_on_mobile(self):
+        import pathlib
+        css = (pathlib.Path(__file__).resolve().parent.parent / "static/inventory/styles.css").read_text(encoding="utf-8")
+        self.assertIn("body.sidebar-collapsed .sidebar.is-open", css)
+
 class PackSizePrefillTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user("p", password="pw", is_superuser=True, is_staff=True)
