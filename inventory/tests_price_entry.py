@@ -195,3 +195,23 @@ class MobileSidebarCssTests(TestCase):
         import pathlib
         css = (pathlib.Path(__file__).resolve().parent.parent / "static/inventory/styles.css").read_text(encoding="utf-8")
         self.assertIn("body.sidebar-collapsed .sidebar.is-open", css)
+
+class PackSizePrefillTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("p", password="pw", is_superuser=True, is_staff=True)
+        self.client.force_login(self.user)
+
+    def test_pack_size_from_stocktake_count_prefills_when_product_has_none(self):
+        from .stocktake_models import StocktakeSession, StocktakeZone, StocktakeCount
+        product = Product.objects.create(name="Water", barcode="W1", selling_price=0)
+        session = StocktakeSession.objects.create(name="S", created_by=self.user)
+        zone = StocktakeZone.objects.create(session=session, name="Z")
+        StocktakeCount.objects.create(session=session, zone=zone, product=product, good_quantity=24,
+                                      units_per_pack_snapshot=12, counted_by=self.user)
+        item = self.client.get(reverse("price_entry"), {"scope": "all"}).context["queue"][0]
+        self.assertEqual(item["units_per_pack"], 12)
+
+    def test_stays_empty_when_no_pack_size_recorded(self):
+        Product.objects.create(name="Single", barcode="S1", selling_price=0)
+        item = self.client.get(reverse("price_entry"), {"scope": "all"}).context["queue"][0]
+        self.assertEqual(item["units_per_pack"], "")

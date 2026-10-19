@@ -19,7 +19,8 @@ from django.views.decorators.http import require_GET, require_POST
 from functools import wraps
 
 from .access_control import has_access, permission_required
-from .models import AuditLog, PriceEntryClaim, Product
+from .models import AuditLog, PriceEntryClaim, Product, StockReceiptLine
+from .stocktake_models import StocktakeCount
 from .pricing_gate import pending_unpriced_products, unpriced
 
 BATCH_SIZE = 10
@@ -43,6 +44,18 @@ def api_permission_required(codename):
     return decorator
 
 
+def _recorded_pack_size(product):
+    """Pack size on the product, else the latest one recorded during stocktake or receiving."""
+    if product.units_per_pack:
+        return product.units_per_pack
+    count = (StocktakeCount.objects.filter(product=product, units_per_pack_snapshot__gte=2)
+             .order_by("-id").values_list("units_per_pack_snapshot", flat=True).first())
+    if count:
+        return count
+    return (StockReceiptLine.objects.filter(product=product, units_per_pack_snapshot__gte=2)
+            .order_by("-id").values_list("units_per_pack_snapshot", flat=True).first())
+
+
 def _serialize(product, user):
     data = {
         "id": product.pk,
@@ -51,7 +64,7 @@ def _serialize(product, user):
         "barcode": "" if product.barcode.startswith("MANUAL-") else product.barcode,
         "category": product.category.name if product.category_id else "",
         "selling_price": str(product.selling_price) if product.selling_price else "",
-        "units_per_pack": product.units_per_pack or "",
+        "units_per_pack": _recorded_pack_size(product) or "",
         "pack_selling_price": str(product.pack_selling_price) if product.pack_selling_price is not None else "",
         "priced": bool(product.selling_price),
     }
