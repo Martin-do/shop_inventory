@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .access_control import has_access, permission_required
+from .pricing_gate import price_block_message, unpriced_in_receipt
 from .models import Category, Product, StockMovement, StockReceipt, StockReceiptLine
 from .stocktake_models import StocktakeSession
 
@@ -131,6 +132,7 @@ def receipt_detail(request, receipt_id):
             "receipt": receipt,
             "lines": lines,
             "unapproved_count": unapproved_count,
+            "unpriced_products": unpriced_in_receipt(receipt),
             "can_review": has_access(request.user, "review_stock_receipts"),
             "can_apply": has_access(request.user, "apply_stock_receipts"),
             "can_create_products": has_access(request.user, "create_products"),
@@ -329,6 +331,10 @@ def receipt_review_line(request, receipt_id, line_id):
         messages.error(request, "Approved quantity cannot be negative.")
         return redirect("stock_receipt_detail", receipt_id=receipt.pk)
 
+    if not line.product.selling_price:
+        messages.error(request, price_block_message([line.product]))
+        return redirect("stock_receipt_detail", receipt_id=receipt.pk)
+
     line.approved_quantity = approved
     line.status = StockReceiptLine.STATUS_APPROVED
     line.approved_by = request.user
@@ -353,6 +359,11 @@ def receipt_apply(request, receipt_id):
 
     if any(line.status != StockReceiptLine.STATUS_APPROVED for line in lines):
         messages.error(request, "Approve every receipt line before applying it.")
+        return redirect("stock_receipt_detail", receipt_id=receipt.pk)
+
+    missing_price = unpriced_in_receipt(receipt)
+    if missing_price.exists():
+        messages.error(request, price_block_message(missing_price))
         return redirect("stock_receipt_detail", receipt_id=receipt.pk)
 
     active_conflicts = [

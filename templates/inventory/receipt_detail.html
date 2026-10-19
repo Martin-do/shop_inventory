@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ receipt.reference }}{% endblock %}
 {% block content %}
+{% include "inventory/_price_gate_banner.html" %}
 <section class="heading">
   <div>
     <a href="{% url 'receive_stock' %}" style="font-size:13px;">← Stock receipts</a>

@@ -61,6 +61,8 @@
     <span class="pe-progress" id="pe-progress" aria-live="polite"></span>
   </div>
   <div class="pe-bar" aria-hidden="true"><span id="pe-bar"></span></div>
+  {% if scope == "all" %}<p class="pe-hint">Showing every unpriced product. <a href="{% url 'price_entry' %}">Only stock awaiting approval</a></p>
+  {% elif other_unpriced %}<p class="pe-hint">Showing stock awaiting approval. {{ other_unpriced }} other unpriced product{{ other_unpriced|pluralize }}: <a href="?scope=all">show all</a></p>{% endif %}
 
   <div class="pe-search">
     <input id="pe-search" type="search" inputmode="search" autocomplete="off" placeholder="Search a product to find or edit its price">
