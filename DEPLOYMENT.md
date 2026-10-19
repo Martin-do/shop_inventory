@@ -74,17 +74,16 @@ cd /var/www/shop_inventory && sudo -u www-data git pull --ff-only origin main &&
 (The first time only, you need the pull above so the script exists; afterwards
 `sudo bash /var/www/shop_inventory/deploy.sh` is enough.)
 
-`deploy.sh` does, in order, and stops at the first failure:
+`deploy.sh` is quiet: it prints one `[ ok ]` line per step and shows full
+output only for a step that fails, stopping right there. Steps: environment file,
+database backup (newest 20 kept), `git pull --ff-only`, dependencies, config
+check, migrate, collectstatic, service restart, service running, login page
+answers 200, DEBUG off, `check --deploy` (warning only). On failure it prints the
+rollback command and backup path.
 
-1. Backs up the database with SQLite's backup API to
-   `/var/backups/shop_inventory/pre-deploy-<time>.sqlite3` (newest 20 kept).
-2. `git pull --ff-only origin main`, listing the commits it brought in.
-3. Installs dependencies and runs `manage.py check`.
-4. Runs migrations and `collectstatic`.
-5. Restarts `shop_inventory` only (never the school portal's `gunicorn.service`).
-   If it fails to start it prints the log and the exact rollback command.
-6. Runs `check --deploy` and `audit_access`, confirms the login page answers
-   200, and confirms DEBUG is off.
+**One-time note:** if the server has an older, untracked `deploy.sh`, the first
+pull refuses to overwrite it. Move it aside once:
+`sudo mv /var/www/shop_inventory/deploy.sh /root/deploy.sh.old`.
 
 If the service fails to start, the reason is almost always in:
 
