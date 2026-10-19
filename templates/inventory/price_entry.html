@@ -86,7 +86,9 @@
   const saveUrl='{% url "price_entry_save" %}', searchUrl='{% url "price_entry_search" %}';
   const items=JSON.parse(document.getElementById('pe-queue').textContent);
   let history=JSON.parse(document.getElementById('pe-history-data').textContent);
-  const totalAtStart={{ total_missing }};
+  const totalAtStart={{ total_missing }}, scope='{{ scope }}', nextUrl='{% url "price_entry_next" %}';
+  let remaining=totalAtStart, exhausted=false;
+  items.forEach(i=>{i.seen_price=i.selling_price;});
   const stage=document.getElementById('pe-stage');
   const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let pos=0, savedCount=0, busy=false, card=null;
@@ -94,7 +96,7 @@
   const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   function progress(){
-    const left=items.filter(i=>!i.priced).length;
+    const left=remaining;
     document.getElementById('pe-progress').textContent=left?left+' left to price':'All priced';
     const done=Math.max(0,totalAtStart-left);
     document.getElementById('pe-bar').style.width=(totalAtStart?Math.min(100,done/totalAtStart*100):100)+'%';
@@ -149,25 +151,48 @@
     form.addEventListener('submit',e=>{e.preventDefault();save(form,i);});
   }
 
+  function conflict(form,i,j){
+    const p=items[i];
+    const err=document.getElementById('pe-error');
+    err.innerHTML='<div style="background:#fdf1d8;border:1px solid #e0b04a;border-radius:12px;padding:12px;color:var(--ink)"><strong>Already priced.</strong> '+esc(j.by)+(j.at?' set it at '+esc(j.at):'')+' to '+naira(j.product.selling_price)+(j.product.pack_selling_price?' (pack '+naira(j.product.pack_selling_price)+')':'')+'. Do you want to change it to your price?<div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="button" id="pe-keep">Keep theirs, next</button><button type="button" class="button primary" id="pe-overwrite">Update to mine</button></div></div>';
+    p.seen_price=j.product.selling_price;p.priced=true;
+    document.getElementById('pe-keep').onclick=()=>{Object.assign(p,j.product);p.seen_price=p.selling_price;remaining=Math.max(0,remaining-1);progress();go(pos+1,1);};
+    document.getElementById('pe-overwrite').onclick=()=>save(form,i,true);
+  }
+
+  async function more(){
+    if(exhausted)return false;
+    try{
+      const r=await fetch(nextUrl+'?scope='+scope+'&exclude='+items.map(x=>x.id).join(','));const j=await r.json();
+      if(typeof j.remaining==='number'){remaining=j.remaining;progress();}
+      const fresh=(j.items||[]).filter(n=>!items.some(x=>x.id===n.id));
+      fresh.forEach(n=>{n.seen_price=n.selling_price;items.push(n);});
+      if(!fresh.length)exhausted=true;
+      return fresh.length>0;
+    }catch(e){return false;}
+  }
+
   function fail(form,msg){
     const err=document.getElementById('pe-error');if(err)err.textContent=msg;
     form.classList.remove('shake');void form.offsetWidth;form.classList.add('shake');
     const u=form.querySelector('#pe-unit');if(u)u.focus();
   }
 
-  async function save(form,i){
+  async function save(form,i,confirmOverwrite){
     if(busy)return;
     const p=items[i];
     const unit=form.querySelector('#pe-unit').value.trim();
     if(!unit||!(Number(unit)>0)){fail(form,'Enter a unit price, or tap Skip for now.');return;}
     busy=true;form.classList.add('pe-saving');
-    const body=new FormData(form);body.set('product_id',p.id);
+    const body=new FormData(form);body.set('product_id',p.id);body.set('seen_price',p.seen_price||'');body.set('scope',scope);if(confirmOverwrite)body.set('confirm','1');
     try{
       const r=await fetch(saveUrl,{method:'POST',headers:{'X-CSRFToken':csrf},body});
       const j=await r.json();
+      if(r.status===409&&j.conflict){busy=false;form.classList.remove('pe-saving');conflict(form,i,j);return;}
       if(!r.ok){busy=false;form.classList.remove('pe-saving');fail(form,j.error||'Could not save. Try again.');return;}
       const wasPriced=p.priced;
-      Object.assign(p,j.product);
+      Object.assign(p,j.product);p.seen_price=p.selling_price;
+      if(typeof j.remaining==='number'){remaining=j.remaining;}
       if(!wasPriced)savedCount++;
       if(j.history)pushHistory(j.history);
       progress();busy=false;
@@ -191,8 +216,12 @@
     else if(u)setTimeout(()=>u.focus({preventScroll:true}),300);
   }
 
-  function go(i,dir){
-    if(i<0||i>items.length)return;
+  async function go(i,dir){
+    if(i<0)return;
+    if(i>=items.length-2&&!exhausted){
+      if(i>=items.length)await more(); else more();
+    }
+    if(i>items.length)return;
     show(i,dir);window.scrollTo({top:0,behavior:reduce?'auto':'smooth'});
   }
 
@@ -216,7 +245,7 @@
     if(idx<0){
       const r=await fetch(searchUrl+'?q='+encodeURIComponent(label||''));const j=await r.json();
       const found=(j.results||[]).find(x=>x.id===id);if(!found)return;
-      items.splice(pos+1,0,found);idx=pos+1;
+      found.seen_price=found.selling_price;items.splice(pos+1,0,found);idx=pos+1;
     }
     go(idx,idx>=pos?1:-1);
   }
@@ -240,6 +269,7 @@
     const b=e.target.closest('button[data-id]');if(!b)return;
     const p=(results._data||[]).find(x=>String(x.id)===b.dataset.id);if(!p)return;
     const existing=items.findIndex(x=>x.id===p.id);
+    p.seen_price=p.selling_price;
     if(existing>=0){Object.assign(items[existing],p);go(existing,existing>=pos?1:-1);}
     else{items.splice(pos+1,0,p);go(pos+1,1);}
     results.hidden=true;searchBox.value='';

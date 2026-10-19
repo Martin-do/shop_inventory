@@ -351,3 +351,15 @@ class BackupLog(models.Model):
 
     def __str__(self):
         return f"Backup {self.file_name} - {self.status} at {self.timestamp}"
+
+
+class PriceEntryClaim(models.Model):
+    """Temporary hold so two phones pricing at once are handed different products.
+
+    Held per browser session (not per account), so the same account on two
+    phones still gets separate batches. Expired holds are ignored.
+    """
+    product = models.OneToOneField(Product, on_delete=models.CASCADE, related_name="price_claim")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="price_claims")
+    session_key = models.CharField(max_length=64, db_index=True)
+    expires_at = models.DateTimeField(db_index=True)

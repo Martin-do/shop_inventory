@@ -133,3 +133,58 @@ class PriceGateTests(TestCase):
         self.assertEqual([p["name"] for p in queue], ["Unpriced"])
         queue = self.client.get(reverse("price_entry"), {"scope": "all"}).context["queue"]
         self.assertEqual(len(queue), 2)
+
+
+class PriceEntryConcurrencyTests(TestCase):
+    def setUp(self):
+        from django.test import Client
+        self.user = User.objects.create_user("shared", password="pw")
+        grant(self.user, "change_selling_price", "view_products")
+        self.user = User.objects.get(pk=self.user.pk)
+        self.phone_a, self.phone_b = Client(), Client()
+        self.phone_a.force_login(self.user)
+        self.phone_b.force_login(self.user)  # same account, separate session
+        for n in range(25):
+            Product.objects.create(name=f"Item {n:02d}", barcode=f"MANUAL-{n}", selling_price=0)
+
+    def ids(self, client, **params):
+        params.setdefault("scope", "all")
+        return [p["id"] for p in client.get(reverse("price_entry"), params).context["queue"]]
+
+    def test_two_phones_on_one_account_get_different_products(self):
+        a, b = self.ids(self.phone_a), self.ids(self.phone_b)
+        self.assertEqual(len(a), 10)
+        self.assertEqual(len(b), 10)
+        self.assertFalse(set(a) & set(b))
+
+    def test_reload_resumes_same_products(self):
+        first = self.ids(self.phone_a)
+        self.assertEqual(self.ids(self.phone_a), first)
+
+    def test_next_batch_excludes_other_phones_and_seen_items(self):
+        a = self.ids(self.phone_a)
+        self.ids(self.phone_b)
+        data = self.phone_a.get(reverse("price_entry_next"), {"scope": "all", "exclude": ",".join(map(str, a))}).json()
+        got = [i["id"] for i in data["items"]]
+        self.assertEqual(len(got), 5)  # 25 total - 10 (a) - 10 (b)
+        self.assertFalse(set(got) & set(a))
+
+    def test_saving_something_already_priced_returns_conflict_then_confirm_overwrites(self):
+        product = Product.objects.order_by("id").first()
+        save = lambda client, **extra: client.post(reverse("price_entry_save"), {"product_id": product.pk, "selling_price": "100", "seen_price": "", **extra})
+        self.assertEqual(save(self.phone_a).status_code, 200)
+        second = save(self.phone_b, selling_price="150")
+        self.assertEqual(second.status_code, 409)
+        body = second.json()
+        self.assertTrue(body["conflict"])
+        self.assertEqual(body["by"], "shared")
+        self.assertEqual(body["product"]["selling_price"], "100.00")
+        product.refresh_from_db()
+        self.assertEqual(product.selling_price, Decimal("100.00"))
+        self.assertEqual(save(self.phone_b, selling_price="150", confirm="1").status_code, 200)
+        product.refresh_from_db()
+        self.assertEqual(product.selling_price, Decimal("150.00"))
+
+    def test_anonymous_cannot_claim(self):
+        from django.test import Client
+        self.assertEqual(Client().get(reverse("price_entry_next")).status_code, 401)

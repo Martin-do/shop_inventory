@@ -7,7 +7,9 @@ optional pack price), save, move to the next. Every save goes through
 """
 from decimal import Decimal, InvalidOperation
 
-from django.db import transaction
+from datetime import timedelta
+
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -17,10 +19,11 @@ from django.views.decorators.http import require_GET, require_POST
 from functools import wraps
 
 from .access_control import has_access, permission_required
-from .models import AuditLog, Product
+from .models import AuditLog, PriceEntryClaim, Product
 from .pricing_gate import pending_unpriced_products, unpriced
 
-QUEUE_LIMIT = 2000
+BATCH_SIZE = 10
+CLAIM_MINUTES = 20
 HISTORY_LIMIT = 15
 PRICE_FIELDS = {"selling_price", "pack_selling_price", "units_per_pack"}
 MAX_PRICE = Decimal("9999999999.99")
@@ -81,23 +84,76 @@ def _history(limit=HISTORY_LIMIT):
     return rows
 
 
+def _session_key(request):
+    if not request.session.session_key:
+        request.session.save()
+    return request.session.session_key
+
+
+def _missing_queryset(scope):
+    base = Product.objects.filter(is_active=True)
+    if scope == "all":
+        return unpriced(base)
+    return base.filter(pk__in=pending_unpriced_products().values("pk"), selling_price=0)
+
+
+def claim_batch(request, scope, exclude_ids=(), size=BATCH_SIZE):
+    """Hand this browser session the next unpriced products nobody else is working on."""
+    key = _session_key(request)
+    now = timezone.now()
+    expires = now + timedelta(minutes=CLAIM_MINUTES)
+    PriceEntryClaim.objects.filter(expires_at__lt=now).delete()
+    others = PriceEntryClaim.objects.exclude(session_key=key).values("product_id")
+    candidates = _missing_queryset(scope).exclude(pk__in=others).exclude(pk__in=list(exclude_ids)).order_by("id")
+    # Products this session already holds come first so a reload resumes the same ones.
+    mine = list(PriceEntryClaim.objects.filter(session_key=key).values_list("product_id", flat=True))
+    held = list(candidates.filter(pk__in=mine)[:size])
+    chosen = held + list(candidates.exclude(pk__in=mine)[: max(0, size - len(held))])
+    claimed = []
+    for product in chosen:
+        try:
+            with transaction.atomic():
+                if product.pk in mine:
+                    PriceEntryClaim.objects.filter(product=product).update(expires_at=expires, user=request.user)
+                else:
+                    PriceEntryClaim.objects.create(product=product, user=request.user, session_key=key, expires_at=expires)
+            claimed.append(product.pk)
+        except IntegrityError:
+            continue  # another phone claimed it a moment ago
+    if not claimed:
+        return []
+    products = Product.objects.filter(pk__in=claimed).select_related("category").with_stock().order_by("id")
+    return [_serialize(p, request.user) for p in products]
+
+
 @permission_required("change_selling_price")
 def price_entry(request):
-    base = Product.objects.filter(is_active=True).select_related("category")
+    base = Product.objects.filter(is_active=True)
     scope = "all" if request.GET.get("scope") == "all" else "pending"
     pending = pending_unpriced_products()
-    # Default: only stock that is waiting for approval. ?scope=all adds every other unpriced product.
-    missing = (unpriced(base) if scope == "all" else base.filter(pk__in=pending.values("pk"))).order_by("id")
-    total_missing = missing.count()
-    queue = [_serialize(p, request.user) for p in missing.with_stock()[:QUEUE_LIMIT]]
+    # Default: only stock waiting for approval. ?scope=all adds every other unpriced product.
     return render(request, "inventory/price_entry.html", {
-        "queue": queue,
+        "queue": claim_batch(request, scope),
         "history": _history(),
-        "total_missing": total_missing,
+        "total_missing": _missing_queryset(scope).count(),
         "scope": scope,
         "other_unpriced": unpriced(base).exclude(pk__in=pending.values("pk")).count(),
-        "total_active": base.count(),
     })
+
+
+@api_permission_required("change_selling_price")
+@require_GET
+def price_entry_next(request):
+    scope = "all" if request.GET.get("scope") == "all" else "pending"
+    exclude = [int(x) for x in request.GET.get("exclude", "").split(",") if x.isdigit()]
+    return JsonResponse({"items": claim_batch(request, scope, exclude), "remaining": _missing_queryset(scope).count()})
+
+
+def _last_price_change(product_id):
+    for row in _history(limit=300):
+        if row["product_id"] == product_id:
+            return row
+    return None
 
 
 @api_permission_required("change_selling_price")
@@ -158,12 +214,32 @@ def price_entry_save(request):
         product = Product.objects.select_for_update().filter(pk=request.POST.get("product_id") or 0).first()
         if product is None:
             return JsonResponse({"error": "That product no longer exists."}, status=404)
+        seen = request.POST.get("seen_price")
+        if seen is not None and request.POST.get("confirm") != "1":
+            try:
+                seen_value = Decimal(seen or "0").quantize(Decimal("0.01"))
+            except InvalidOperation:
+                seen_value = Decimal("0.00")
+            if product.selling_price != seen_value:
+                last = _last_price_change(product.pk) or {}
+                fresh = Product.objects.select_related("category").with_stock().get(pk=product.pk)
+                return JsonResponse({
+                    "conflict": True,
+                    "product": _serialize(fresh, request.user),
+                    "by": last.get("by", "someone else"),
+                    "at": last.get("at", ""),
+                }, status=409)
         product.selling_price = unit
         if units_per_pack:
             product.units_per_pack = units_per_pack
         product.pack_selling_price = pack if product.units_per_pack else None
         product.save()
+        PriceEntryClaim.objects.filter(product=product).delete()
 
     product = Product.objects.select_related("category").with_stock().get(pk=product.pk)
     history = _history(limit=1)
-    return JsonResponse({"product": _serialize(product, request.user), "history": history[0] if history else None})
+    return JsonResponse({
+        "product": _serialize(product, request.user),
+        "history": history[0] if history else None,
+        "remaining": _missing_queryset("all" if request.POST.get("scope") == "all" else "pending").count(),
+    })
