@@ -18,6 +18,7 @@ from functools import wraps
 
 from .access_control import has_access, permission_required
 from .models import AuditLog, Product
+from .pricing_gate import pending_unpriced_products, unpriced
 
 QUEUE_LIMIT = 2000
 HISTORY_LIMIT = 15
@@ -83,13 +84,18 @@ def _history(limit=HISTORY_LIMIT):
 @permission_required("change_selling_price")
 def price_entry(request):
     base = Product.objects.filter(is_active=True).select_related("category")
-    missing = base.filter(selling_price=0).order_by("id")
+    scope = "all" if request.GET.get("scope") == "all" else "pending"
+    pending = pending_unpriced_products()
+    # Default: only stock that is waiting for approval. ?scope=all adds every other unpriced product.
+    missing = (unpriced(base) if scope == "all" else base.filter(pk__in=pending.values("pk"))).order_by("id")
     total_missing = missing.count()
     queue = [_serialize(p, request.user) for p in missing.with_stock()[:QUEUE_LIMIT]]
     return render(request, "inventory/price_entry.html", {
         "queue": queue,
         "history": _history(),
         "total_missing": total_missing,
+        "scope": scope,
+        "other_unpriced": unpriced(base).exclude(pk__in=pending.values("pk")).count(),
         "total_active": base.count(),
     })
 

@@ -855,3 +855,26 @@ class OpeningStocktakeTests(TestCase):
         })
         self.assertEqual(confirmed.status_code, 200)
         self.assertEqual(Product.objects.count(), 2)
+
+
+class UnpricedStocktakeGateTests(OpeningStocktakeTests):
+    def test_cannot_approve_or_apply_while_product_has_no_price(self):
+        self.product.selling_price = Decimal("0.00")
+        self.product.save()
+        count = StocktakeCount.objects.create(
+            session=self.session, zone=self.zone, product=self.product,
+            good_quantity=4, counted_by=self.clerk,
+        )
+        self.session.status = StocktakeSession.STATUS_REVIEW
+        self.session.save(update_fields=["status"])
+        self.client.force_login(self.admin)
+        self.client.post(reverse("stocktake_review_count", args=[count.pk]), {"action": "approve", "approved_good_quantity": "4"})
+        count.refresh_from_db()
+        self.assertNotEqual(count.status, StocktakeCount.STATUS_APPROVED)
+        count.status = StocktakeCount.STATUS_APPROVED
+        count.approved_good_quantity = 4
+        count.save()
+        self.client.post(reverse("stocktake_apply", args=[self.session.pk]))
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.status, StocktakeSession.STATUS_REVIEW)
+        self.assertEqual(StockMovement.objects.filter(product=self.product).count(), 0)

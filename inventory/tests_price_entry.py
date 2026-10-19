@@ -24,14 +24,14 @@ class PriceEntryTests(TestCase):
         return self.client.post(reverse("price_entry_save"), {"product_id": product.pk, **data})
 
     def test_page_queue_only_has_active_unpriced_products(self):
-        response = self.client.get(reverse("price_entry"))
+        response = self.client.get(reverse("price_entry"), {"scope": "all"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual([p["name"] for p in response.context["queue"]], ["Indomie"])
         self.assertContains(response, "Save &amp; next")
 
     def test_anonymous_cannot_view_or_save(self):
         self.client.logout()
-        self.assertEqual(self.client.get(reverse("price_entry")).status_code, 302)
+        self.assertEqual(self.client.get(reverse("price_entry"), {"scope": "all"}).status_code, 302)
         self.assertEqual(self.post(self.unpriced, selling_price="100").status_code, 401)
         self.assertEqual(self.client.get(reverse("price_entry_search"), {"q": "milk"}).status_code, 401)
         self.unpriced.refresh_from_db()
@@ -41,7 +41,7 @@ class PriceEntryTests(TestCase):
         clerk = User.objects.create_user("viewer", password="pw")
         grant(clerk, "view_products")
         self.client.force_login(clerk)
-        self.assertNotEqual(self.client.get(reverse("price_entry")).status_code, 200)
+        self.assertNotEqual(self.client.get(reverse("price_entry"), {"scope": "all"}).status_code, 200)
         self.assertNotEqual(self.post(self.unpriced, selling_price="100").status_code, 200)
         self.unpriced.refresh_from_db()
         self.assertEqual(self.unpriced.selling_price, 0)
@@ -87,7 +87,7 @@ class PriceEntryTests(TestCase):
         self.post(self.priced, selling_price="650")
         self.priced.refresh_from_db()
         self.assertEqual(self.priced.selling_price, Decimal("650.00"))
-        history = self.client.get(reverse("price_entry")).context["history"]
+        history = self.client.get(reverse("price_entry"), {"scope": "all"}).context["history"]
         self.assertEqual(history[0]["label"], "Milk")
         self.assertEqual(history[0]["selling_price"], "650.00")
 
@@ -100,8 +100,36 @@ class PriceEntryTests(TestCase):
     def test_cost_price_hidden_without_permission(self):
         self.unpriced.cost_price = Decimal("80")
         self.unpriced.save()
-        item = self.client.get(reverse("price_entry")).context["queue"][0]
+        item = self.client.get(reverse("price_entry"), {"scope": "all"}).context["queue"][0]
         self.assertNotIn("cost_price", item)
         grant(self.pricer, "view_cost_price")
-        item = self.client.get(reverse("price_entry")).context["queue"][0]
+        item = self.client.get(reverse("price_entry"), {"scope": "all"}).context["queue"][0]
         self.assertEqual(item["cost_price"], "80.00")
+
+
+class PriceGateTests(TestCase):
+    def setUp(self):
+        from .models import StockReceipt, StockReceiptLine
+        from .stocktake_models import StocktakeSession, StocktakeZone, StocktakeCount
+        self.boss = User.objects.create_user("boss", password="pw", is_superuser=True, is_staff=True)
+        self.client.force_login(self.boss)
+        self.product = Product.objects.create(name="Unpriced", barcode="G1", selling_price=0)
+        self.other = Product.objects.create(name="Loose", barcode="G2", selling_price=0)
+        self.receipt = StockReceipt.objects.create(reference="R1", status=StockReceipt.STATUS_SUBMITTED, created_by=self.boss)
+        self.line = StockReceiptLine.objects.create(receipt=self.receipt, product=self.product, quantity_received=3, entered_by=self.boss)
+
+    def test_receipt_line_cannot_be_approved_without_price(self):
+        self.client.post(reverse("stock_receipt_review_line", args=[self.receipt.pk, self.line.pk]), {"approved_quantity": "3"})
+        self.line.refresh_from_db()
+        self.assertEqual(self.line.status, "pending")
+        self.product.selling_price = 100
+        self.product.save()
+        self.client.post(reverse("stock_receipt_review_line", args=[self.receipt.pk, self.line.pk]), {"approved_quantity": "3"})
+        self.line.refresh_from_db()
+        self.assertEqual(self.line.status, "approved")
+
+    def test_default_queue_only_has_pending_stock(self):
+        queue = self.client.get(reverse("price_entry")).context["queue"]
+        self.assertEqual([p["name"] for p in queue], ["Unpriced"])
+        queue = self.client.get(reverse("price_entry"), {"scope": "all"}).context["queue"]
+        self.assertEqual(len(queue), 2)

@@ -1,4 +1,5 @@
 from collections import defaultdict
+from .pricing_gate import price_block_message, unpriced_in_session
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -203,6 +204,7 @@ def stocktake_detail(request, session_id):
         "staff": User.objects.filter(profile__role__in=[UserProfile.ROLE_ADMIN, UserProfile.ROLE_STOCK_CLERK], is_active=True).order_by("username"),
         "recount_count": session.counts.filter(status=StocktakeCount.STATUS_RECOUNT).count(),
         "unapproved_count": session.counts.exclude(status=StocktakeCount.STATUS_APPROVED).count(),
+        "unpriced_products": unpriced_in_session(session),
     }
     return render(request, "inventory/stocktake_detail.html", context)
 
@@ -430,6 +432,9 @@ def stocktake_review_count(request, count_id):
         count.note = request.POST.get("note", "Recount requested").strip()[:240]
         count.save(update_fields=["status", "note"])
     else:
+        if not count.product.selling_price:
+            messages.error(request, price_block_message([count.product]))
+            return redirect("stocktake_detail", session_id=count.session_id)
         try:
             approved = max(0, int(request.POST.get("approved_good_quantity", count.good_quantity)))
         except ValueError:
@@ -451,6 +456,11 @@ def stocktake_apply(request, session_id):
     session = get_object_or_404(StocktakeSession.objects.select_for_update(), pk=session_id, status=StocktakeSession.STATUS_REVIEW)
     if session.counts.exclude(status=StocktakeCount.STATUS_APPROVED).exists():
         messages.error(request, "Approve every count before applying opening inventory.")
+        return redirect("stocktake_detail", session_id=session.pk)
+
+    missing_price = unpriced_in_session(session)
+    if missing_price.exists():
+        messages.error(request, price_block_message(missing_price))
         return redirect("stocktake_detail", session_id=session.pk)
 
     totals = defaultdict(int)

@@ -4,6 +4,7 @@
 {% block extra_head %}<link rel="stylesheet" href="{% static 'inventory/stocktake.css' %}?v=20260804-1">{% endblock %}
 {% block page_class %}page-stocktake{% endblock %}
 {% block content %}
+{% include "inventory/_price_gate_banner.html" %}
 <section class="stocktake-hero">
   <div>
     <a class="stocktake-back" href="{% url 'stocktake_list' %}">← Opening inventory</a>

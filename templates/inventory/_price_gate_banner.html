@@ -1,0 +1,9 @@
+{% if unpriced_products %}
+<div class="panel" style="border-color:#e0b04a;background:#fdf6e3;padding:14px 16px;margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap" role="status">
+  <div style="flex:1;min-width:220px">
+    <strong>{{ unpriced_products|length }} product{{ unpriced_products|length|pluralize }} still need{{ unpriced_products|length|pluralize:"s," }} a selling price.</strong>
+    <div style="color:var(--muted);font-size:14px">Nothing here can be approved or applied until every product has a price.</div>
+  </div>
+  {% if perms.inventory.change_selling_price %}<a class="button primary" href="{% url 'price_entry' %}">Enter prices</a>{% endif %}
+</div>
+{% endif %}
